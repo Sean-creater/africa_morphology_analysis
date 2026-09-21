@@ -1,0 +1,70 @@
+# Africa Morphology Analysis
+
+Downstream analysis of the continent-scale African urban morphology
+embedding: builds a data-driven typology of urban form, and analyses how
+that typology is organised across space, city size, and position within
+individual cities.
+
+## Contents
+
+- [`01_typology_construction/`](01_typology_construction/) — hierarchical
+  clustering of the embeddings into k = 17 morphological types, the
+  materials supporting that choice of k, and the resulting types'
+  distinguishing features.
+- [`02_regional_structure/`](02_regional_structure/) — how the 17 types
+  combine at the city scale, communities of cities with similar
+  composition and spatial configuration, and their relationship to
+  climate, socioeconomic, and colonial-history context.
+- [`03_urban_hierarchy/`](03_urban_hierarchy/) — how morphological
+  composition and spatial organisation scale with city population.
+- [`04_center_periphery/`](04_center_periphery/) — the radial transition
+  in urban form from each city's centre to its edge, and how that
+  transition differs across city-size tiers.
+
+## Pipeline order
+
+```
+01_typology_construction/  ──type labels──►  02_regional_structure/
+                                    │                    │
+                                    ▼                    ▼
+                          03_urban_hierarchy/  ──►  04_center_periphery/
+```
+
+`03_urban_hierarchy/` and `04_center_periphery/` both draw on
+`02_regional_structure/`'s community labels and population covariates;
+`04_center_periphery/`'s `extended/` submodule also draws on
+`03_urban_hierarchy/`'s population-size tiers. See each module's README
+for the exact file-level dependencies.
+
+## Installation
+
+```bash
+conda env create -f environment.yml
+conda activate africa_morphology_analysis
+```
+
+Some steps additionally require:
+- A Google Earth Engine project, for the satellite-imagery rendering in
+  `01_typology_construction/k_selection/`.
+- A checked-out copy of the companion
+  [`africa_morphology_imagery`](https://github.com/Sean-creater/africa_morphology_imagery)
+  repository, for the same rendering step.
+
+## Data requirements
+
+None of the following are bundled in this repository:
+
+| Source | Used for |
+|--------|----------|
+| Continent-scale student embeddings ([`africa_morphology_embedding`](https://github.com/Sean-creater/africa_morphology_embedding)) | Input to `01_typology_construction/` |
+| Per-city cleaned morphology CSVs and SHP grid geometries ([`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)) | Input throughout |
+| Africa country boundary shapefile | Map figures in `02_regional_structure/community_detection/` |
+
+See the manuscript's Methods and Supplementary Information for the full
+analysis and construction details.
+
+## License
+
+No license file was found in the source project this repository was
+derived from. Until a license is chosen, all rights are reserved by
+default; add a `LICENSE` file before distributing this code publicly.
