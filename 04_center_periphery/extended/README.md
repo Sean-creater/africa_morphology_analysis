@@ -81,11 +81,7 @@ python 12_tier_rings_comparison.py
 - `outputs/tables/formal_models.csv` — the regression models underlying
   the diversity and assortativity profiles.
 - `outputs/tables/robustness/robustness_check{A,B,C}_*.csv` — the three
-  robustness checks with generating code (leave-one-country-out,
+  robustness checks from `09_robustness.py` (leave-one-country-out,
   alternative radial coordinate, alternative centre definition).
-  `robustness_check{1,2,3}_*.csv` (alternative distance metric,
-  rarefaction, and a stricter 50% quality-control threshold) are
-  additional robustness results without a corresponding script in this
-  repository; the coefficient table format matches `formal_models.csv`.
 - `outputs/figures/` — the main three-panel figure and the illustrative
   ring visualisations.

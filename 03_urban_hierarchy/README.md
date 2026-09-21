@@ -14,11 +14,8 @@ geographic community or country.
    - `H_star` / `H17_star`: normalised Shannon entropy of the group/type
      composition (0 = one group dominates, 1 = all groups equal);
    - `r` / `r17`: Newman categorical spatial assortativity of the
-     group/type composition (computed from Queen adjacency built directly
-     from grid geometry, rather than the cached cell graphs from
-     `../02_regional_structure/subgraph_construction/`, which have
-     incomplete edge sets for a share of cities due to an upstream CRS
-     issue);
+     group/type composition, computed from Queen adjacency built directly
+     from grid geometry;
    - `log_pop`, `community`, and `country`, joined from
      `../02_regional_structure/`.
 2. `02_plot_hierarchy.py` — the main continent-wide figure: all four group

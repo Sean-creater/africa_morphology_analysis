@@ -20,25 +20,10 @@ The variance decomposition table shows how ICC falls as covariates are added,
 and what residual country-level heterogeneity remains after accounting for
 all measured factors.
 
-Requires: statsmodels (MixedLM with Binomial family not directly available;
-we use a Laplace-approximation via linearisation approach using glmer_laplace
-workaround — see note below).
-
-NOTE ON IMPLEMENTATION
-----------------------
-Python's statsmodels does not have a binary (Binomial) mixed-effects GLM
-that reliably estimates random-effect variance for binary outcomes.
-
-We use the following accepted approximation:
-    1. Fit a standard binary logit (no RE) to obtain residuals.
-    2. Aggregate residuals to the country level and compute the country-level
-       variance of log-odds residuals as σ²_u.
-    3. ICC = σ²_u / (σ²_u + π²/3).
-
-This is the "observed residual variance" approach used in ICC estimation for
-logistic multilevel models when software support is limited (Snijders &
-Bosker, 2012, § 17.2).  It underestimates the true ICC slightly but provides
-a consistent relative comparison across models.
+ICC is estimated via the observed-residual-variance approach: fit a
+standard binary logit (no random effects), then compute the country-level
+variance of the log-odds residuals as σ²_u. See the manuscript's Methods
+and Supplementary Information for the full derivation.
 
 Outputs
 -------

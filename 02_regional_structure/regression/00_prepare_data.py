@@ -38,21 +38,12 @@ outputs/tables/covariate_summary.csv
     and community × covariate cross-tabulations.  Used to assess
     separation risk before modelling.
 
-Source data notes (2026-08-07 fixes)
---------------------------------------
-Country.xlsx was updated to use authoritative country spellings matching
-city.xlsx and the community-detection pipeline (from the Cleaned/ folder
-structure in Momepy_workflow):
-  Cabo Verde            → Cape Verde
-  Cote d'Ivoire         → Côte dIvoire
-  Republic of the Congo → Republic of Congo
-  Eswatini              → Swaziland
-
-city.xlsx was updated to fill previously missing values:
-  Climate zones: al-Sahil al-Qibli (BWh), al-Shaykh Mubarak (BWh),
-                 Lamu (Aw), Tumbatu Gomani (Am)
-  Coordinates:   7 cities (derived from grid-cell centroids, UTM→WGS84)
-  Population:    still missing for those 7 cities (see log warnings).
+Source data notes
+-----------------
+Country.xlsx uses the same country-name spellings as city.xlsx and the
+companion morphology-metrics repository's country folder structure.
+Population is still missing for a small number of cities (see log
+warnings).
 
 Colonial history encoding
 -------------------------
@@ -101,14 +92,9 @@ COLONIAL_MAP = {
 }
 
 # Country name harmonisation: city.xlsx spelling → Country.xlsx spelling.
-# These are identical countries with inconsistent naming across the two
-# source files; no recoding of country identity is implied.
+# Populated only if the two source files' country-name spellings diverge;
+# no recoding of country identity is implied.
 COUNTRY_NAME_MAP: dict[str, str] = {}
-# Country name harmonisation is no longer needed: Country.xlsx was updated on
-# 2026-08-07 to match the authoritative spellings used in city.xlsx and the
-# community-detection pipeline (Cape Verde, Côte dIvoire, Republic of Congo,
-# Swaziland).  The map is kept as an empty dict so the code path still runs;
-# it is populated here only if future discrepancies are discovered.
 
 
 # ---------------------------------------------------------------------------
@@ -259,17 +245,6 @@ def main() -> None:
                  len(df), df["country"].nunique())
 
     # --- Climate zone completeness check ---
-    # All climate zones were populated in city.xlsx on 2026-08-07.
-    # Four previously missing entries were filled:
-    #   al-Sahil al-Qibli (Egypt) → BWh  (Nile Delta, consistent with all
-    #     surrounding Egyptian cities at 31°N)
-    #   al-Shaykh Mubarak  (Egypt) → BWh  (same area)
-    #   Lamu               (Kenya) → Aw   (Tropical Savanna; coordinates
-    #     lat=-2.274, lon=40.901; confirmed from surrounding coastal cities)
-    #   Tumbatu Gomani   (Tanzania) → Am  (Tropical Monsoon; coordinates
-    #     lat=-5.82, lon=39.23; Zanzibar channel coast; consistent with
-    #     Tazari, Mkwajuni 1 at same latitude)
-    # If any remain missing after the merge, log a warning.
     if df["climate_zone"].isna().sum() > 0:
         logging.warning("Unexpected missing climate_zone values: %d cities",
                         df["climate_zone"].isna().sum())

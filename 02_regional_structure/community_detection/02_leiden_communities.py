@@ -279,7 +279,7 @@ def save_communities(df: pd.DataFrame, membership: list,
     return df
 
 
-def save_summary(df: pd.DataFrame) -> None:
+def save_summary(df: pd.DataFrame, alpha: float, k: int) -> None:
     rows = []
     for comm_id, grp in df.groupby("community"):
         row = {"community": int(comm_id),
@@ -293,8 +293,7 @@ def save_summary(df: pd.DataFrame) -> None:
                .sort_values("community").reset_index(drop=True))
     summary.to_parquet(OUT_DIR / "community_summary.parquet", index=False)
     logging.info("Saved community summary → %s", OUT_DIR / "community_summary.parquet")
-    print("\nCommunity overview (main α=%.2f, k=%d):" %
-          (summary["community"].iloc[0] * 0 + 0.5, 0))  # placeholder, see caller
+    print("\nCommunity overview (main α=%.2f, k=%d):" % (alpha, k))
     print(summary[["community", "n_cities", "n_cells", "top_country"]]
           .to_string(index=False))
 
@@ -306,7 +305,7 @@ def save_summary(df: pd.DataFrame) -> None:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--alpha",            type=float, default=0.5)
-    parser.add_argument("--k",                type=int,   default=15)
+    parser.add_argument("--k",                type=int,   default=100)
     parser.add_argument("--n-seeds",          type=int,   default=10)
     parser.add_argument("--n-workers",        type=int,   default=16)
     parser.add_argument("--skip-sensitivity", action="store_true",
@@ -356,7 +355,7 @@ def main():
     print(f"\nMain run (α={args.alpha}, k={args.k}): "
           f"{vc.nunique()} communities, Q stored in log above")
     print("Sizes:", vc.values.tolist())
-    save_summary(df_main)
+    save_summary(df_main, args.alpha, args.k)
 
     if args.skip_sensitivity:
         logging.info("Sensitivity sweep skipped (--skip-sensitivity).")

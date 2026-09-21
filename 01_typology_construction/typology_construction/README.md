@@ -8,11 +8,8 @@ to every grid cell.
 
 1. `01_build_linkage.py` — Ward hierarchical agglomerative clustering
    (Euclidean distance) on 2,000 Mini-batch K-Means centroids of the
-   L2-normalised 256-dim embeddings. Clustering on centroids rather than
-   the full ~1M-cell set keeps Ward linkage tractable at continental scale;
-   on unit-norm vectors, Euclidean and cosine distance rankings are
-   monotonically equivalent, so the angular similarity structure of the
-   embedding space is preserved.
+   L2-normalised 256-dim embeddings (for tractability at continental
+   scale).
 2. `02_assign_labels.py` — every grid cell is mapped to its nearest
    centroid, then the dendrogram is cut at each candidate k = 2–30 to
    produce a full set of candidate type labels per cell.

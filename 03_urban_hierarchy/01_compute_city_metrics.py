@@ -7,10 +7,8 @@ For each city (n≈6918) this script computes:
   - p1..p4   : share of grid cells belonging to each higher-order morphology group
   - H_star   : normalised Shannon entropy  H* = H / log(4),  H* ∈ [0,1]
                0 = single group dominates, 1 = all four groups equal
-  - r        : Newman categorical spatial assortativity of the four groups
+  - r        : Newman categorical spatial assortativity of the four groups,
                computed from Queen adjacency built directly from SHP geometry
-               (bypasses cached cell graphs, which have incomplete edge sets
-               for ~57% of cities due to an upstream CRS issue)
                r > 0 → same-group cells cluster spatially (segregation)
                r ≈ 0 → random mixing
                r < 0 → cross-group cells cluster (interleaving)
@@ -189,10 +187,8 @@ def _process_city(args):
             if len(gdf) == 0:
                 raise ValueError("Empty merge")
 
-            # Reproject to Web Mercator (EPSG:3857) before Queen computation.
-            # Some UTM-zoned SHPs produce zero edges with libpysal when the
-            # CRS causes floating-point gaps at nominally shared hex boundaries.
-            # EPSG:3857 resolves this consistently across all countries.
+            # Reproject to Web Mercator (EPSG:3857) before Queen computation,
+            # for consistent adjacency detection across countries.
             if gdf.crs is not None and gdf.crs.to_epsg() != 3857:
                 gdf = gdf.to_crs(epsg=3857)
 

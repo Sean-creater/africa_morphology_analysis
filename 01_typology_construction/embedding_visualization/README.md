@@ -11,12 +11,9 @@ vary across the embedding space.
 2. `02_feature_overlay.py` — the same t-SNE coordinates, coloured by the
    top-12 morphometric features (ranked by η² in
    `../cluster_interpretation/`) instead of cluster label.
-3. `03_umap.py` — the same visualisation using UMAP instead of t-SNE, as
-   an independent check that cluster separation is not an artefact of the
-   t-SNE embedding.
+3. `03_umap.py` — the same visualisation using UMAP instead of t-SNE.
 
-Embeddings are L2-normalised before projection (cosine-equivalent,
-consistent with the embedding model's own triplet training objective).
+Embeddings are L2-normalised before projection (cosine metric).
 Degenerate embeddings (L2 norm outside the IQR-based range) and projection
 outliers (>5σ on either axis) are dropped before plotting; see each
 script's docstring for the exact thresholds.

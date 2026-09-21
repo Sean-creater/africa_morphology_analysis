@@ -76,13 +76,6 @@ Outputs
         NOTE: mechanically confounded — RPC and beta_H both derive from
         population-defined spatial units; not used in main findings.
       Columns: metric | value | p_value | note
-
-NOTE on _morphology_land_decomposition():
-  The function is retained in this file for reference but is NOT called from
-  main(). The Kitagawa-Shapley decomposition contains an identity error:
-  LPC_i = Σ_k A_ik·LPC_ik is NOT a valid identity (correct form uses
-  population weights P_ik, not land weights A_ik). Results are therefore
-  unreliable and excluded from all main findings.
 """
 
 import logging
@@ -499,183 +492,6 @@ def _morphology_allocation_coupling(fm: pd.DataFrame,
     return pd.DataFrame(rows)
 
 
-def _morphology_land_decomposition() -> tuple[pd.DataFrame, pd.DataFrame]:
-    r"""
-    Analysis 4: Kitagawa-Shapley decomposition of land-per-capita (LPC)
-    differences across city-size tiers. Fully independent of the radial
-    coordinate system — no reference to a population-defined centre.
-
-    Definitions (per city i, morphological type k):
-        A_ik  = n_cells_k / n_cells_total   (land-area share, proxy)
-        P_ik  = pop_k / pop_total           (population share)
-        L_ik  = A_ik / P_ik                 (land-to-pop ratio)
-                  L=1 → proportional; L>1 → land-heavy; L<1 → pop-heavy
-        LPC_ik = n_cells_k / pop_k          (cells per person within type k)
-
-    City-level identity:
-        LPC_i = n_cells_total / pop_total = sum_k A_ik * LPC_ik
-
-    Kitagawa-Shapley symmetric decomposition for contrast (T_high - T_low):
-        Composition  = sum_k (A_high_k - A_low_k) * (LPC_high_k + LPC_low_k) / 2
-        Within-type  = sum_k (LPC_high_k - LPC_low_k) * (A_high_k + A_low_k) / 2
-        Total        = Composition + Within-type
-
-    The symmetric (Shapley) form eliminates path-dependence of Kitagawa.
-
-    Returns
-    -------
-    decomp_df : DataFrame with one row per contrast (T2-T1, T3-T1, T4-T1)
-        contrast | LPC_base | LPC_compare | delta_LPC | comp_effect
-                 | within_effect | comp_pct
-
-    type_df : DataFrame with one row per type17 (17 rows)
-        type17 | A_T1..A_T4 | delta_A_T4_T1 | L_T1..L_T4
-               | mid_beta_mean | mid_beta_sig | comp_contrib_T4T1
-               | within_contrib_T4T1
-    """
-    PART4 = ROOT.parent / "core" / "outputs" / "tables"
-    cell_pq = PART4 / "cell_radial_position.parquet"
-    tier_pq = OUT_TABLES / "city_tiers.parquet"
-    sep_csv = OUT_TABLES / "size_effect_profiles.csv"
-
-    # ── load data ─────────────────────────────────────────────────────────
-    cr = pd.read_parquet(cell_pq, columns=["city", "country", "label_k17", "Pop2022"])
-    tiers = pd.read_parquet(tier_pq, columns=["city", "country", "tier"])
-    city_tier_map = tiers.set_index(["city", "country"])["tier"].to_dict()
-    cr["tier"] = cr.apply(
-        lambda r: city_tier_map.get((r["city"], r["country"]), None), axis=1)
-    cr = cr.dropna(subset=["tier"])
-
-    # ── city totals ────────────────────────────────────────────────────────
-    cit_tot = cr.groupby(["city", "country", "tier"]).agg(
-        n_cells_total=("Pop2022", "size"),
-        pop_total=("Pop2022", "sum"),
-    ).reset_index()
-
-    # ── city × type aggregates ─────────────────────────────────────────────
-    cit_type = cr.groupby(["city", "country", "tier", "label_k17"]).agg(
-        n_cells_k=("Pop2022", "size"),
-        pop_k=("Pop2022", "sum"),
-    ).reset_index()
-    cit_type = cit_type.merge(
-        cit_tot[["city", "country", "n_cells_total", "pop_total"]],
-        on=["city", "country"])
-
-    # Derived quantities; skip cells where pop_k = 0
-    cit_type = cit_type[cit_type["pop_k"] > 0].copy()
-    cit_type["A_ik"]   = cit_type["n_cells_k"] / cit_type["n_cells_total"]
-    cit_type["P_ik"]   = cit_type["pop_k"]     / cit_type["pop_total"]
-    cit_type["L_ik"]   = cit_type["A_ik"]      / cit_type["P_ik"]
-    cit_type["LPC_ik"] = cit_type["n_cells_k"] / cit_type["pop_k"]
-
-    # ── city-level LPC for tier summary ───────────────────────────────────
-    lpc_city = cit_tot.copy()
-    lpc_city["LPC"] = lpc_city["n_cells_total"] / lpc_city["pop_total"]
-    lpc_tier = lpc_city.groupby("tier")["LPC"].mean()
-
-    # ── tier-mean A and LPC per type (city-equal-weight) ──────────────────
-    tier_A   = cit_type.groupby(["tier", "label_k17"])["A_ik"].mean().unstack(fill_value=0)
-    tier_LPC = cit_type.groupby(["tier", "label_k17"])["LPC_ik"].mean().unstack(fill_value=0)
-    tier_L   = cit_type.groupby(["tier", "label_k17"])["L_ik"].mean().unstack(fill_value=np.nan)
-
-    all_types = sorted(tier_A.columns.tolist())
-
-    # ── mid-zone type betas from size_effect_profiles.csv ─────────────────
-    mid_beta_mean = {}
-    mid_beta_sig  = {}
-    if sep_csv.exists():
-        sep = pd.read_csv(sep_csv)
-        mid_zone_bins = ZONE_MID  # [2,3,4,5]
-        mid_sep = sep[sep["radial_bin"].isin(mid_zone_bins)]
-        for t in all_types:
-            sub = mid_sep[mid_sep["type17"] == t]
-            if len(sub) == 0:
-                mid_beta_mean[t] = np.nan
-                mid_beta_sig[t]  = False
-            else:
-                mid_beta_mean[t] = float(sub["beta"].mean())
-                # significant if any bin passes BH-FDR in this zone
-                if "q_value_bh" in sub.columns:
-                    mid_beta_sig[t] = bool((sub["q_value_bh"] < 0.05).any())
-                else:
-                    mid_beta_sig[t] = bool((sub["p_value"] < 0.05).any())
-    else:
-        for t in all_types:
-            mid_beta_mean[t] = np.nan
-            mid_beta_sig[t]  = False
-
-    # ── Kitagawa-Shapley decomposition helper ──────────────────────────────
-    def _kitagawa(tier_lo: str, tier_hi: str) -> dict:
-        A_lo  = tier_A.loc[tier_lo]  if tier_lo  in tier_A.index  else pd.Series(0, index=all_types)
-        A_hi  = tier_A.loc[tier_hi]  if tier_hi  in tier_A.index  else pd.Series(0, index=all_types)
-        L_lo  = tier_LPC.loc[tier_lo] if tier_lo in tier_LPC.index else pd.Series(0, index=all_types)
-        L_hi  = tier_LPC.loc[tier_hi] if tier_hi in tier_LPC.index else pd.Series(0, index=all_types)
-
-        comp_k   = (A_hi - A_lo) * (L_hi + L_lo) / 2
-        within_k = (L_hi - L_lo) * (A_hi + A_lo) / 2
-        comp     = float(comp_k.sum())
-        within   = float(within_k.sum())
-        total    = comp + within
-        # comp_pct is only interpretable when total has the same sign as
-        # both components (no partial cancellation). Flag cases where the
-        # total is small relative to the composition effect.
-        if total != 0 and abs(total) > 0.1 * abs(comp):
-            comp_pct = 100.0 * comp / total
-        else:
-            comp_pct = np.nan   # near-cancellation — do not interpret
-        return {
-            "contrast":      f"{tier_hi} - {tier_lo}",
-            "LPC_base":      float(lpc_tier.get(tier_lo, np.nan)),
-            "LPC_compare":   float(lpc_tier.get(tier_hi, np.nan)),
-            "delta_LPC":     float(lpc_tier.get(tier_hi, np.nan) - lpc_tier.get(tier_lo, np.nan)),
-            "comp_effect":   comp,
-            "within_effect": within,
-            "comp_pct":      comp_pct,
-            "_comp_k":       comp_k,
-            "_within_k":     within_k,
-        }
-
-    contrasts = [_kitagawa("T1", "T2"), _kitagawa("T1", "T3"), _kitagawa("T1", "T4")]
-
-    decomp_rows = []
-    for c in contrasts:
-        decomp_rows.append({k: v for k, v in c.items() if not k.startswith("_")})
-    decomp_df = pd.DataFrame(decomp_rows)
-
-    # ── per-type detail table (using T4-T1 as primary contrast) ───────────
-    c_T4 = contrasts[2]  # T1 → T4
-    A_T1 = tier_A.loc["T1"] if "T1" in tier_A.index else pd.Series(np.nan, index=all_types)
-    A_T2 = tier_A.loc["T2"] if "T2" in tier_A.index else pd.Series(np.nan, index=all_types)
-    A_T3 = tier_A.loc["T3"] if "T3" in tier_A.index else pd.Series(np.nan, index=all_types)
-    A_T4 = tier_A.loc["T4"] if "T4" in tier_A.index else pd.Series(np.nan, index=all_types)
-    L_T1 = tier_L.loc["T1"] if "T1" in tier_L.index else pd.Series(np.nan, index=all_types)
-    L_T2 = tier_L.loc["T2"] if "T2" in tier_L.index else pd.Series(np.nan, index=all_types)
-    L_T3 = tier_L.loc["T3"] if "T3" in tier_L.index else pd.Series(np.nan, index=all_types)
-    L_T4 = tier_L.loc["T4"] if "T4" in tier_L.index else pd.Series(np.nan, index=all_types)
-
-    type_rows = []
-    for t in all_types:
-        type_rows.append({
-            "type17":              t,
-            "A_T1":                float(A_T1.get(t, np.nan)),
-            "A_T2":                float(A_T2.get(t, np.nan)),
-            "A_T3":                float(A_T3.get(t, np.nan)),
-            "A_T4":                float(A_T4.get(t, np.nan)),
-            "delta_A_T4_T1":       float(A_T4.get(t, 0) - A_T1.get(t, 0)),
-            "L_T1":                float(L_T1.get(t, np.nan)),
-            "L_T2":                float(L_T2.get(t, np.nan)),
-            "L_T3":                float(L_T3.get(t, np.nan)),
-            "L_T4":                float(L_T4.get(t, np.nan)),
-            "mid_beta_mean":       mid_beta_mean.get(t, np.nan),
-            "mid_beta_sig":        mid_beta_sig.get(t, False),
-            "comp_contrib_T4T1":   float(c_T4["_comp_k"].get(t, np.nan)),
-            "within_contrib_T4T1": float(c_T4["_within_k"].get(t, np.nan)),
-        })
-    type_df = pd.DataFrame(type_rows)
-
-    return decomp_df, type_df
-
-
 def main():
     OUT_TABLES.mkdir(parents=True, exist_ok=True)
 
@@ -775,10 +591,6 @@ def main():
         print(coup[["metric", "value", "p_value", "note"]].to_string(index=False))
     else:
         log.warning("Skipping Analysis 3: tier_rpc_profile.csv not available.")
-
-    # Analysis 4 (_morphology_land_decomposition) is intentionally excluded:
-    # the LPC identity used there is incorrect (land weights ≠ population
-    # weights). The function is kept for reference but must not be called.
 
     log.info("Done.")
 
