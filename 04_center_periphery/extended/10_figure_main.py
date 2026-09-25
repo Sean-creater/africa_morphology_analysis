@@ -49,6 +49,10 @@ from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 from pathlib import Path
 from datetime import date
 
+import sys
+sys.path.insert(0, str(Path(__file__).parent))
+from _regional_effect_shared import regional_effect_by_bin
+
 ROOT       = Path(__file__).parent
 OUT_TABLES = ROOT / "outputs" / "tables"
 ROBUST_DIR = OUT_TABLES / "robustness"
@@ -182,13 +186,14 @@ def _load_all():
                         index_col="statistic")
     cd    = pd.read_csv(OUT_TABLES / "convergence_decay.csv")
     cbp   = pd.read_parquet(OUT_TABLES / "city_bin_profiles.parquet")
-    cbd   = pd.read_parquet(OUT_TABLES / "city_bin_divergence.parquet")
     cbdiv = pd.read_parquet(OUT_TABLES / "city_bin_diversity.parquet")
     cba   = pd.read_parquet(OUT_TABLES / "city_bin_assortativity.parquet")
     tdd   = pd.read_csv(OUT_TABLES / "tier_divergence_profile.csv")
     sep   = pd.read_csv(OUT_TABLES / "size_effect_profiles.csv")
-    ai    = pd.read_csv(AI_PATH, usecols=["city", "country", "climate_zone", "colonial"])
-    return fm, sdt, cd, cbp, cbd, cbdiv, cba, tdd, sep, ai
+    ai    = pd.read_csv(AI_PATH, usecols=["city", "country", "climate_zone", "colonial",
+                                          "log_gdp", "log_pop_worldpop_2022"]
+                        ).rename(columns={"log_pop_worldpop_2022": "log_pop"})
+    return fm, sdt, cd, cbp, cbdiv, cba, tdd, sep, ai
 
 
 def _panel_A_data(cbp, sep):
@@ -275,74 +280,29 @@ def _tier_metric_profiles(cbdiv, cba):
     return result
 
 
-def _panel_D_data(cbd, ai):
+def _panel_D_data(cbp, ai):
     """
-    Per-bin OLS of JS_to_centroid ~ climate_zone dummies + colonial dummies + log_pop.
-    Returns partial R² for climate and colonial per bin.
-    Uses partial R² = (SSR_restricted - SSR_full) / SST.
+    Partial R^2 of climate and colonial legacy on the 17-type composition
+    PCoA space, net of population, per radial bin. Delegates to the same
+    `regional_effect_by_bin()` used by 06_regional_effect_by_distance.py,
+    so this figure and that script's table report identical numbers.
+
+    Returns (bins, r2_climate, r2_colonial, n_obs) — the same shape this
+    function has always returned, for compatibility with `_panel_D` below.
     """
-    merged = cbd.merge(ai, on=["city", "country"], how="inner")
-    merged = merged.dropna(subset=["JS_to_centroid", "climate_zone", "colonial", "log_pop"])
-
-    bins = sorted(merged["radial_bin"].unique())
-    r2_climate = np.full(len(bins), np.nan)
-    r2_colonial = np.full(len(bins), np.nan)
-    n_obs = np.zeros(len(bins), dtype=int)
-
-    for bi, b in enumerate(bins):
-        sub = merged[merged["radial_bin"] == b].copy()
-        if len(sub) < 20:
-            continue
-        n_obs[bi] = len(sub)
-        Y = sub["JS_to_centroid"].values
-        Y_dm = Y - Y.mean()
-
-        # Build dummies
-        clim_dummies = pd.get_dummies(sub["climate_zone"], drop_first=True, dtype=float)
-        col_dummies  = pd.get_dummies(sub["colonial"],      drop_first=True, dtype=float)
-        log_pop = sub["log_pop"].values - sub["log_pop"].mean()
-
-        # Full model: climate + colonial + log_pop
-        X_full = np.column_stack([
-            np.ones(len(sub)),
-            clim_dummies.values,
-            col_dummies.values,
-            log_pop,
-        ])
-
-        def _ols_ssr(X, y):
-            try:
-                beta, res, _, _ = np.linalg.lstsq(X, y, rcond=None)
-                yhat = X @ beta
-                return np.sum((y - yhat)**2)
-            except Exception:
-                return np.nan
-
-        SSR_full = _ols_ssr(X_full, Y)
-        SST = np.sum(Y_dm**2)
-        if SST < 1e-12:
-            continue
-
-        # Restricted: drop climate (colonial + log_pop only)
-        X_no_clim = np.column_stack([
-            np.ones(len(sub)),
-            col_dummies.values,
-            log_pop,
-        ])
-        SSR_no_clim = _ols_ssr(X_no_clim, Y)
-
-        # Restricted: drop colonial (climate + log_pop only)
-        X_no_col = np.column_stack([
-            np.ones(len(sub)),
-            clim_dummies.values,
-            log_pop,
-        ])
-        SSR_no_col = _ols_ssr(X_no_col, Y)
-
-        r2_climate[bi]  = (SSR_no_clim - SSR_full) / SST
-        r2_colonial[bi] = (SSR_no_col  - SSR_full) / SST
-
-    return np.array(bins), r2_climate, r2_colonial, n_obs
+    result = regional_effect_by_bin(
+        profiles=cbp,
+        covariates=ai,
+        composition_cols=[f"p_{k:02d}" for k in range(1, N_TYPES + 1)],
+        compute_ci=False,  # figure only needs point estimates; the
+                            # bootstrap CIs are reported in
+                            # regional_effect_profile.csv (06_*.py)
+    )
+    bins = result["radial_bin"].to_numpy()
+    r2_climate = result["partial_r2_climate"].to_numpy()
+    r2_colonial = result["partial_r2_colonial"].to_numpy()
+    n_obs = result["n_cities"].to_numpy()
+    return bins, r2_climate, r2_colonial, n_obs
 
 
 # ── Panel A: T1/T2/T3/T4 ribbons + S(u) ──────────────────────────────────
@@ -782,7 +742,7 @@ def _panel_loco(ax, loco: pd.DataFrame, sdt: pd.DataFrame):
 
 def main():
     print("Loading data ...")
-    fm, sdt, cd, cbp, cbd, cbdiv, cba, tdd, sep, ai = _load_all()
+    fm, sdt, cd, cbp, cbdiv, cba, tdd, sep, ai = _load_all()
 
     print("Panel A data ...")
     ribbons, hm, sig, type_order, S_u = _panel_A_data(cbp, sep)
@@ -791,7 +751,7 @@ def main():
     tier_profiles = _tier_metric_profiles(cbdiv, cba)
 
     print("Panel C partial R² ...")
-    d_bins, r2_clim, r2_col, n_obs = _panel_D_data(cbd, ai)
+    d_bins, r2_clim, r2_col, n_obs = _panel_D_data(cbp, ai)
 
     # ─────────────────────────────────────────────────────────────────────
     # Figure geometry:

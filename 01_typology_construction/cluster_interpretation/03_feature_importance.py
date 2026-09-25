@@ -61,7 +61,7 @@ N_JOBS = 16
 # Paths
 # ---------------------------------------------------------------------------
 ROOT               = Path(__file__).resolve().parent
-MODEL_INPUT_CSV    = ROOT / "outputs" / "tables" / "model_input_k17.csv"
+MODEL_INPUT        = ROOT / "outputs" / "tables" / "merged_k17.parquet"
 SELECTED_CSV       = ROOT / "outputs" / "tables" / "selected_features.csv"
 OUT_TABLES         = ROOT / "outputs" / "tables"
 OUT_FIGURES        = ROOT / "outputs" / "figures"
@@ -130,7 +130,7 @@ def _compute_all_eta2(features: list[str], int_data: dict[str, np.ndarray],
 # ---------------------------------------------------------------------------
 def _cache_key(features: list[str]) -> str:
     """SHA-256 of (model_input mtime, sorted feature list) → hex digest."""
-    mtime = MODEL_INPUT_CSV.stat().st_mtime
+    mtime = MODEL_INPUT.stat().st_mtime
     payload = json.dumps({"mtime": mtime, "features": sorted(features)}, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
 
@@ -252,7 +252,7 @@ def main(top_n: int | None = None) -> None:
         logging.info("η² loaded from cache (%s).", ETA2_CACHE)
     else:
         logging.info("Cache miss — loading model input ...")
-        df = pd.read_csv(MODEL_INPUT_CSV, usecols=features + ["label_k17"])
+        df = pd.read_parquet(MODEL_INPUT, columns=features + ["label_k17"])
         labels = df["label_k17"].values
 
         logging.info("Applying rank-INT to %d features (parallel, %d workers) ...",

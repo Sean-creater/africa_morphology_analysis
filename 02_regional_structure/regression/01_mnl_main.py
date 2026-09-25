@@ -79,12 +79,20 @@ RNG_SEED     = 42
 # Load & build design matrices
 # ---------------------------------------------------------------------------
 def load_data():
+    """Population is WorldPop 2022 (log_pop_worldpop_2022, aggregated by
+    00_prepare_data.py from the area-weighted WorldPop 2022 grid within
+    each Africapolis urban agglomeration) — see that script's docstring
+    for the population-definition policy and the Africapolis-2020
+    sensitivity comparison."""
     path = OUT_DIR / "analysis_input.csv"
     df = pd.read_csv(path).dropna(
-        subset=["climate_zone", "colonial", "log_gdp", "log_pop"]
+        subset=["climate_zone", "colonial", "log_gdp", "log_pop_worldpop_2022"]
     ).reset_index(drop=True)
     df["log_gdp_std"] = (df["log_gdp"] - df["log_gdp"].mean()) / df["log_gdp"].std()
-    df["log_pop_std"] = (df["log_pop"] - df["log_pop"].mean()) / df["log_pop"].std()
+    df["log_pop_std"] = (
+        (df["log_pop_worldpop_2022"] - df["log_pop_worldpop_2022"].mean())
+        / df["log_pop_worldpop_2022"].std()
+    )
     log.info("Loaded %d cities, %d countries, %d communities.",
              len(df), df["country"].nunique(), df["community"].nunique())
     return df

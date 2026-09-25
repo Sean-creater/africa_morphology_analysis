@@ -33,7 +33,7 @@ import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
-from config import MODEL_INPUT_CSV, TSNE_PARQUET, OUT_FIG_DIR
+from config import MODEL_INPUT, TSNE_PARQUET, OUT_FIG_DIR
 
 # ---------------------------------------------------------------------------
 # Top-12 features by η² (complete-linkage dedup, one rep per group)
@@ -141,9 +141,9 @@ def main() -> None:
 
     # Load all feature values in one pass
     all_feats = list(FEATURES_1.keys()) + list(FEATURES_2.keys())
-    print(f"Loading features from {MODEL_INPUT_CSV} ...")
-    feats = pd.read_csv(MODEL_INPUT_CSV, usecols=["GridID"] + all_feats,
-                        dtype={"GridID": str})
+    print(f"Loading features from {MODEL_INPUT} ...")
+    feats = pd.read_parquet(MODEL_INPUT, columns=["GridID"] + all_feats)
+    feats["GridID"] = feats["GridID"].astype(str)
 
     df = tsne.merge(feats, on="GridID", how="left")
     n_complete = df[all_feats].notna().all(axis=1).sum()

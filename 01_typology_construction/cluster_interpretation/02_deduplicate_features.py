@@ -55,9 +55,9 @@ N_JOBS = 16
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-ROOT            = Path(__file__).resolve().parent
-MODEL_INPUT_CSV = ROOT / "outputs" / "tables" / "model_input_k17.csv"
-OUT_TABLES      = ROOT / "outputs" / "tables"
+ROOT         = Path(__file__).resolve().parent
+MODEL_INPUT  = ROOT / "outputs" / "tables" / "merged_k17.parquet"
+OUT_TABLES   = ROOT / "outputs" / "tables"
 
 # ---------------------------------------------------------------------------
 # Feature columns (165 morphometric indicators, M6 input space)
@@ -230,7 +230,7 @@ def main(threshold: float = 0.90) -> None:
 
     # --- Load data ---
     logging.info("Loading model input ...")
-    df_raw     = pd.read_csv(MODEL_INPUT_CSV, usecols=FEATURE_COLS + ["label_k17"])
+    df_raw     = pd.read_parquet(MODEL_INPUT, columns=FEATURE_COLS + ["label_k17"])
     labels_arr = df_raw["label_k17"].values
     features   = [f for f in FEATURE_COLS if f in df_raw.columns]
     logging.info("Features available: %d", len(features))

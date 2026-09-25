@@ -27,12 +27,12 @@ EMBEDDINGS_DIR = Path(
     "/data_cleaning_20260224/data_embeddings_20260513"
 )
 
-# CSV with cluster labels and morphometric features, produced by
+# Parquet table with cluster labels and morphometric features, produced by
 # ../cluster_interpretation/01_merge_data.py.
 # Required columns: GridID (str), label_k17 (int), plus all feature columns
 # listed in FEATURES (see 02_feature_overlay.py).
-MODEL_INPUT_CSV = (
-    ROOT.parent / "cluster_interpretation" / "outputs" / "tables" / "model_input_k17.csv"
+MODEL_INPUT = (
+    ROOT.parent / "cluster_interpretation" / "outputs" / "tables" / "merged_k17.parquet"
 )
 
 # ---------------------------------------------------------------------------

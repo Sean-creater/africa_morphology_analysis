@@ -61,7 +61,7 @@ N_JOBS = 16
 # Paths
 # ---------------------------------------------------------------------------
 ROOT               = Path(__file__).resolve().parent
-MODEL_INPUT_CSV    = ROOT / "outputs" / "tables" / "model_input_k17.csv"
+MODEL_INPUT        = ROOT / "outputs" / "tables" / "merged_k17.parquet"
 IMPORTANCE_CSV     = ROOT / "outputs" / "tables" / "feature_importance.csv"
 OUT_TABLES         = ROOT / "outputs" / "tables"
 OUT_FIGURES        = ROOT / "outputs" / "figures"
@@ -313,7 +313,7 @@ def plot_heatmap(
 # Cache helpers
 # ---------------------------------------------------------------------------
 def _cache_key(features: list[str]) -> str:
-    mtime = MODEL_INPUT_CSV.stat().st_mtime
+    mtime = MODEL_INPUT.stat().st_mtime
     payload = json.dumps({"mtime": mtime, "features": sorted(features)}, sort_keys=True)
     return hashlib.sha256(payload.encode()).hexdigest()
 
@@ -385,7 +385,7 @@ def main(top_n: int | None = None) -> None:
         labels = df_int["label_k17"].values
     else:
         logging.info("Cache miss — loading model input ...")
-        df_raw = pd.read_csv(MODEL_INPUT_CSV, usecols=features + ["label_k17"])
+        df_raw = pd.read_parquet(MODEL_INPUT, columns=features + ["label_k17"])
         labels = df_raw["label_k17"].values
 
         logging.info("Applying rank-INT (parallel, %d workers) ...", N_JOBS)

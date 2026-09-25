@@ -12,7 +12,7 @@ Pipeline
 3. L2-normalise (cosine-equivalent, consistent with triplet training).
 4. Full UMAP: n_neighbors=30, min_dist=0.1, cosine metric, random_state=42.
    Runtime: ~30–60 min on a 32-core CPU.
-5. Join k=17 cluster labels from model_input_k17.csv (column GridID).
+5. Join k=17 cluster labels from merged_k17.parquet (column GridID).
 6. Post-clean: drop cells whose UMAP coordinate deviates > 5σ on
    either axis.
 7. Save full coordinates to outputs/umap_coords.parquet (cached —
@@ -49,7 +49,7 @@ import pyarrow.parquet as pq
 import umap
 from sklearn.preprocessing import normalize
 
-from config import EMBEDDINGS_DIR, MODEL_INPUT_CSV, OUT_FIG_DIR
+from config import EMBEDDINGS_DIR, MODEL_INPUT, OUT_FIG_DIR
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -175,8 +175,8 @@ def run_umap(embeddings):
 # Step 5–6 — Join labels + post-clean
 # ---------------------------------------------------------------------------
 def join_and_clean(grid_ids, cities, countries, coords):
-    labels_df = pd.read_csv(MODEL_INPUT_CSV, usecols=["GridID", "label_k17"],
-                            dtype={"GridID": str})
+    labels_df = pd.read_parquet(MODEL_INPUT, columns=["GridID", "label_k17"])
+    labels_df["GridID"] = labels_df["GridID"].astype(str)
     df = pd.DataFrame({
         "GridID":  grid_ids,
         "city":    cities,

@@ -228,21 +228,71 @@ def load_or_compute_distances(feat_path: Path, P: np.ndarray,
 # ---------------------------------------------------------------------------
 
 def build_knn_graph(D: np.ndarray, k: int) -> ig.Graph:
+    """Symmetric (union) k-NN graph: city i and city j are connected if
+    either one lists the other among its own k nearest neighbours.
+
+    Keeping only edges with i < j (as an earlier version of this function
+    did) silently drops any pair where the larger-indexed city selects the
+    smaller-indexed one as a neighbour but not vice versa, making the graph
+    depend on row order rather than purely on distance. Union
+    symmetrization keeps every edge either side actively selected, with no
+    duplicate edge when the selection is mutual.
+    """
     n = len(D)
+    if not np.allclose(D, D.T, atol=1e-8):
+        raise ValueError("build_knn_graph: distance matrix D is not symmetric.")
+
     sigma = float(np.median(D[D > 0]))
-    sources, targets, weights = [], [], []
+    directed_pairs = set()
     for i in range(n):
         nbrs = np.argsort(D[i])[1: k + 1]
         for j in nbrs:
-            if i < j:
-                w = float(np.exp(-((D[i, j] + D[j, i]) / 2) / sigma))
-                sources.append(i)
-                targets.append(j)
-                weights.append(w)
-    G = ig.Graph(n=n, edges=list(zip(sources, targets)), directed=False)
+            if i != j:
+                directed_pairs.add((int(i), int(j)))
+
+    undirected_pairs = {(min(i, j), max(i, j)) for i, j in directed_pairs}
+
+    edges, weights = [], []
+    for i, j in undirected_pairs:
+        w = float(np.exp(-D[i, j] / sigma))
+        edges.append((i, j))
+        weights.append(w)
+
+    G = ig.Graph(n=n, edges=edges, directed=False)
     G.es["weight"] = weights
-    logging.info("k-NN graph (k=%d): %d nodes, %d edges", k, n, G.ecount())
+
+    _validate_knn_graph(G, D, directed_pairs, k)
+
+    degrees = G.degree()
+    components = G.connected_components()
+    giant_frac = max(components.sizes()) / n if n > 0 else 0.0
+    logging.info(
+        "k-NN graph (k=%d): %d nodes, %d edges, mean degree=%.1f, "
+        "%d connected components, giant component=%.1f%%",
+        k, n, G.ecount(), float(np.mean(degrees)), len(components), giant_frac * 100,
+    )
     return G
+
+
+def _validate_knn_graph(G: ig.Graph, D: np.ndarray, directed_pairs: set, k: int) -> None:
+    """Structural checks on the symmetrized k-NN graph."""
+    edge_pairs = [tuple(sorted(e.tuple)) for e in G.es]
+
+    if any(i == j for i, j in edge_pairs):
+        raise ValueError("k-NN graph contains self-loops.")
+    if len(edge_pairs) != len(set(edge_pairs)):
+        raise ValueError("k-NN graph contains duplicate edges.")
+
+    # Every city must retain at least one edge to each city it actively
+    # selected as a neighbour (the union step can only add edges relative
+    # to any single city's own directed selection, never remove one).
+    edge_set = set(edge_pairs)
+    for i, j in directed_pairs:
+        if (min(i, j), max(i, j)) not in edge_set:
+            raise ValueError(
+                f"k-NN graph is missing edge ({i}, {j}), which city {i} "
+                "actively selected as a k-nearest neighbour."
+            )
 
 
 # ---------------------------------------------------------------------------

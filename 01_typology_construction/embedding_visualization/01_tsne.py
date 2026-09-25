@@ -12,7 +12,7 @@ Pipeline
 3. L2-normalise (cosine-equivalent, consistent with triplet training).
 4. Full t-SNE via openTSNE (Barnes-Hut, perplexity=50, cosine metric).
    Runtime: ~30 min on a 32-core CPU.
-5. Join k=17 cluster labels from model_input_k17.csv.
+5. Join k=17 cluster labels from merged_k17.parquet.
 6. Post-clean: drop cells whose t-SNE coordinate deviates > 5σ on
    either axis.
 7. Save full coordinates to outputs/tsne_coords.parquet (cached —
@@ -48,7 +48,7 @@ import pyarrow.parquet as pq
 from sklearn.preprocessing import normalize
 from openTSNE import TSNE
 
-from config import EMBEDDINGS_DIR, MODEL_INPUT_CSV, TSNE_PARQUET, OUT_FIG_DIR
+from config import EMBEDDINGS_DIR, MODEL_INPUT, TSNE_PARQUET, OUT_FIG_DIR
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -160,8 +160,8 @@ def run_tsne(embeddings):
 # Step 5–6 — Join labels + post-clean
 # ---------------------------------------------------------------------------
 def join_and_clean(grid_ids, cities, countries, coords):
-    labels_df = pd.read_csv(MODEL_INPUT_CSV, usecols=["GridID", "label_k17"],
-                            dtype={"GridID": str})
+    labels_df = pd.read_parquet(MODEL_INPUT, columns=["GridID", "label_k17"])
+    labels_df["GridID"] = labels_df["GridID"].astype(str)
     df = pd.DataFrame({
         "GridID":  grid_ids,
         "city":    cities,

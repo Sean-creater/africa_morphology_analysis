@@ -13,13 +13,18 @@ Inputs
 ------
 input/city.xlsx
     City-level: country, city, latitude, longitude, grid_cell_count,
-    climate_zone(dominant), population_2020
+    climate_zone(dominant), population_2020 (Africapolis 2020; retained
+    only as a sensitivity comparison, see below)
 input/Country.xlsx
     Country-level: Country, Geographic_Region,
     GDP_per_Capita(2020 dollar, source: World Bank),
     Colonial History (source: Our World in Data Colonizers Dataset)
 ../community_detection/outputs/city_communities.parquet
     City-level Leiden community labels (1–10).
+../../04_center_periphery/core/outputs/tables/city_centres.parquet
+    City-level total_pop2022: per-city sum of the area-weighted WorldPop
+    2022 population grid (see 04_center_periphery/core/01_define_centres.py).
+    This is the primary population variable (see below).
 
 Outputs
 -------
@@ -30,20 +35,50 @@ outputs/tables/analysis_input.csv
       climate_zone  (original Köppen code, 13 classes),
       colonial      (original 6-class encoding; see encode_colonial()),
       log_gdp       (log GDP per capita, 2020 USD, World Bank),
-      log_pop       (log city population 2020),
+      log_pop_worldpop_2022, log_pop_worldpop_2022_std
+                    (primary population variable — see below),
+      log_pop_africapolis_2020
+                    (sensitivity-only; Africapolis 2020, retained for
+                    comparison, NOT used in the primary MNL model),
       lat_c, lon_c  (mean-centred, SD-scaled latitude/longitude),
       lat2, lon2, lat_lon  (second-order spatial polynomial terms).
 outputs/tables/covariate_summary.csv
     Counts and country coverage for climate_zone and colonial,
     and community × covariate cross-tabulations.  Used to assess
     separation risk before modelling.
+outputs/tables/population_definition_comparison.csv
+    Per-city comparison of population_worldpop_2022 vs
+    population_africapolis_2020 (both raw counts), for the sensitivity
+    analysis described below.
 
 Source data notes
 -----------------
 Country.xlsx uses the same country-name spellings as city.xlsx and the
 companion morphology-metrics repository's country folder structure.
-Population is still missing for a small number of cities (see log
-warnings).
+
+Population definition
+----------------------
+City population is calculated by aggregating WorldPop 2022 population
+counts within each Africapolis urban agglomeration (population_worldpop_2022,
+from 04_center_periphery/core/01_define_centres.py's per-city sum of the
+area-weighted WorldPop 2022 grid). This is the primary population variable
+used throughout the analysis (MNL regression, urban-hierarchy scaling, and
+the center-periphery radial analyses all now share this definition).
+
+Exception: Ethiopia's WorldPop 2022 layer does not exist; its cities use
+WorldPop 2020 instead (see 04_center_periphery/core/01_define_centres.py
+docstring). This is a data-availability constraint, not an inconsistency
+in method.
+
+Cities with zero, missing, or implausibly low-coverage WorldPop 2022
+population are flagged and EXCLUDED from the model sample rather than
+imputed (no clip(lower=1)-style silent fix) — see
+population_worldpop_2022_valid in the missing-value report below.
+
+Africapolis 2020 population (population_2020 in city.xlsx) is retained
+only as a sensitivity check: population_definition_comparison.csv reports
+the Pearson/Spearman correlation between the two definitions, the
+log-ratio distribution, and the cities with the largest divergence.
 
 Colonial history encoding
 -------------------------
@@ -79,10 +114,12 @@ import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
-ROOT       = Path(__file__).resolve().parent
-INPUT_DIR  = ROOT / "input"
-OUT_TABLES = ROOT / "outputs" / "tables"
-CD_OUT     = ROOT.parent / "community_detection" / "outputs"
+ROOT        = Path(__file__).resolve().parent
+INPUT_DIR   = ROOT / "input"
+OUT_TABLES  = ROOT / "outputs" / "tables"
+CD_OUT      = ROOT.parent / "community_detection" / "outputs"
+CENTRES_PQ  = (ROOT.parent.parent / "04_center_periphery" / "core"
+               / "outputs" / "tables" / "city_centres.parquet")
 
 COLONIAL_MAP = {
     "United Kingdom": "British",
@@ -142,6 +179,54 @@ def standardise_spatial(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def write_population_comparison(df: pd.DataFrame, out_dir: Path) -> None:
+    """
+    Sensitivity comparison of the two population definitions, on the
+    common sample where both are valid: Pearson/Spearman correlation
+    (log scale), the log-ratio distribution, and the cities with the
+    largest divergence. Written for the model sample (WorldPop 2022
+    valid); Africapolis-invalid cities are NaN in the ratio columns.
+    """
+    from scipy.stats import pearsonr, spearmanr
+
+    comp = df[["city", "country", "population_worldpop_2022",
+               "population_africapolis_2020"]].copy()
+    ap = comp["population_africapolis_2020"]
+    ap_valid = np.isfinite(ap) & (ap > 0)
+    comp["log_ratio_worldpop_to_africapolis"] = np.where(
+        ap_valid,
+        np.log(comp["population_worldpop_2022"]) - np.log(ap.where(ap_valid)),
+        np.nan,
+    )
+    comp.to_csv(out_dir / "population_definition_comparison.csv", index=False)
+
+    common = comp[ap_valid]
+    if len(common) >= 10:
+        pearson_r, pearson_p = pearsonr(
+            np.log(common["population_worldpop_2022"]),
+            np.log(common["population_africapolis_2020"]),
+        )
+        spearman_r, spearman_p = spearmanr(
+            common["population_worldpop_2022"], common["population_africapolis_2020"]
+        )
+        lr = common["log_ratio_worldpop_to_africapolis"]
+        logging.info(
+            "Population definition comparison (n=%d common cities):\n"
+            "  Pearson r (log-log)  = %.4f (p=%.2e)\n"
+            "  Spearman rho         = %.4f (p=%.2e)\n"
+            "  log-ratio (WP22/AP20): mean=%.3f  median=%.3f  sd=%.3f\n"
+            "  median ratio (WP22/AP20) = %.3f",
+            len(common), pearson_r, pearson_p, spearman_r, spearman_p,
+            lr.mean(), lr.median(), lr.std(), float(np.exp(lr.median())),
+        )
+        top_div = common.reindex(lr.abs().sort_values(ascending=False).index).head(10)
+        logging.info("Largest population-definition divergences:\n%s",
+                     top_div[["city", "country", "population_worldpop_2022",
+                              "population_africapolis_2020",
+                              "log_ratio_worldpop_to_africapolis"]].to_string())
+    logging.info("Population definition comparison saved.")
+
+
 def write_covariate_summary(df: pd.DataFrame, out_dir: Path) -> None:
     """
     Write covariate_summary.csv: for each categorical covariate, report
@@ -188,15 +273,32 @@ def main() -> None:
                  len(city_df), len(country_df))
 
     # --- City table ---
-    city_df = city_df.rename(columns={"climate_zone(dominant)": "climate_zone"})
-    city_df["log_pop"] = np.log(city_df["population_2020"].clip(lower=1))
-    city_df = city_df.drop(columns=["population_2020"])
+    city_df = city_df.rename(columns={"climate_zone(dominant)": "climate_zone",
+                                       "population_2020": "population_africapolis_2020"})
     # Harmonise country names to match Country.xlsx spelling
     n_remapped = city_df["country"].isin(COUNTRY_NAME_MAP).sum()
     city_df["country"] = city_df["country"].replace(COUNTRY_NAME_MAP)
     logging.info("Country name harmonisation: %d cities remapped (%s).",
                  n_remapped,
                  ", ".join(f"{k}→{v}" for k, v in COUNTRY_NAME_MAP.items()))
+
+    # --- WorldPop 2022 population (primary) ---
+    # Per-city sum of the area-weighted WorldPop 2022 grid, from
+    # 04_center_periphery/core/01_define_centres.py. Ethiopia uses WorldPop
+    # 2020 there (2022 coverage does not exist for Ethiopia) — a documented
+    # data-availability exception, not an inconsistency.
+    if not CENTRES_PQ.exists():
+        raise FileNotFoundError(
+            f"city_centres.parquet not found: {CENTRES_PQ}\n"
+            "Run 04_center_periphery/core/01_define_centres.py first."
+        )
+    centres_df = pd.read_parquet(CENTRES_PQ, columns=["city", "country", "total_pop2022"])
+    centres_df = centres_df.rename(columns={"total_pop2022": "population_worldpop_2022"})
+    n_before = len(city_df)
+    city_df = city_df.merge(centres_df, on=["city", "country"], how="left")
+    n_unmatched = city_df["population_worldpop_2022"].isna().sum()
+    logging.info("WorldPop 2022 merge: %d/%d cities matched (%d unmatched).",
+                 n_before - n_unmatched, n_before, n_unmatched)
 
     # --- Country table ---
     country_df = country_df.rename(columns={
@@ -251,14 +353,42 @@ def main() -> None:
         logging.warning("%s", df.loc[df["climate_zone"].isna(),
                                      ["city", "country"]].to_string())
 
+    # --- Population validity (WorldPop 2022, primary) ---
+    # Zero, missing, or non-finite population is flagged and EXCLUDED from
+    # the model sample rather than imputed (no clip(lower=1)-style fix),
+    # per the population-definition policy documented above.
+    pop_wp = df["population_worldpop_2022"]
+    df["population_worldpop_2022_valid"] = np.isfinite(pop_wp) & (pop_wp > 0)
+    n_invalid = (~df["population_worldpop_2022_valid"]).sum()
+    if n_invalid > 0:
+        logging.warning(
+            "%d cities have zero/missing/unmatched WorldPop 2022 population "
+            "and are EXCLUDED from the model sample (not imputed):\n%s",
+            n_invalid,
+            df.loc[~df["population_worldpop_2022_valid"], ["city", "country"]].to_string(),
+        )
+    df = df[df["population_worldpop_2022_valid"]].copy()
+    df["log_pop_worldpop_2022"] = np.log(df["population_worldpop_2022"])
+
+    # --- Africapolis 2020 population (sensitivity-only) ---
+    pop_ap = df["population_africapolis_2020"]
+    ap_valid = np.isfinite(pop_ap) & (pop_ap > 0)
+    df["log_pop_africapolis_2020"] = np.where(ap_valid, np.log(pop_ap.where(ap_valid)), np.nan)
+
     # --- Spatial terms ---
     df = standardise_spatial(df)
 
+    df["log_pop_worldpop_2022_std"] = (
+        (df["log_pop_worldpop_2022"] - df["log_pop_worldpop_2022"].mean())
+        / df["log_pop_worldpop_2022"].std()
+    )
+
     # --- Missing value report ---
     key_cols = ["community", "climate_zone", "colonial", "log_gdp",
-                "log_pop", "lat_c", "lon_c"]
+                "log_pop_worldpop_2022", "lat_c", "lon_c"]
     missing = df[key_cols].isna().sum()
-    logging.info("Missing values:\n%s", missing.to_string())
+    logging.info("Missing values (post population-validity filter):\n%s",
+                 missing.to_string())
     if missing.any():
         logging.warning("Rows with any missing key covariate: %d",
                         df[key_cols].isna().any(axis=1).sum())
@@ -268,7 +398,9 @@ def main() -> None:
         "city", "country", "community",
         "latitude", "longitude",
         "climate_zone", "colonial",
-        "log_gdp", "log_pop",
+        "log_gdp",
+        "log_pop_worldpop_2022", "log_pop_worldpop_2022_std",
+        "log_pop_africapolis_2020",
         "lat_c", "lon_c", "lat2", "lon2", "lat_lon",
     ]
     out = df[out_cols].copy()
@@ -276,11 +408,15 @@ def main() -> None:
     logging.info("Analysis input saved: %d rows × %d cols.",
                  len(out), out.shape[1])
 
+    # --- Population definition sensitivity comparison ---
+    write_population_comparison(df, OUT_TABLES)
+
     # --- Covariate summary and cross-tabulations ---
     write_covariate_summary(out, OUT_TABLES)
 
     # --- Console summary ---
-    print(f"\n  Cities            : {len(out)}")
+    print(f"\n  Cities            : {len(out)}  ({n_invalid} excluded for "
+          f"invalid WorldPop 2022 population)")
     print(f"  Countries         : {out['country'].nunique()}")
     print(f"  Communities       : {out['community'].nunique()}  "
           f"(sizes: {out['community'].value_counts().sort_index().to_dict()})")

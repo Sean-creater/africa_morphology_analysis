@@ -17,7 +17,9 @@ For each city (n≈6918) this script computes:
 
 Covariates joined from existing tables:
   - community  (1–8, Leiden k=100; community 0 is a valid Leiden community)
-  - log_pop    (natural log of city population, from regression analysis_input)
+  - log_pop    (natural log of city population — WorldPop 2022, aggregated
+                by 00_prepare_data.py from the area-weighted WorldPop 2022
+                grid within each Africapolis urban agglomeration)
   - country
   - n_cells    (number of grid cells in city, QC)
   - n_edges    (total adjacency edges in city, QC)
@@ -279,9 +281,14 @@ def main(n_workers: int = 16) -> None:
     metrics = metrics.merge(comm, on=["country", "city"], how="left")
 
     # --- Join log_pop and covariates ---
+    # Population is WorldPop 2022 (see 02_regional_structure/regression/
+    # 00_prepare_data.py's docstring for the population-definition policy);
+    # kept as the `log_pop` column name here since every downstream script
+    # in 03_urban_hierarchy and 04_center_periphery reads city_metrics.parquet
+    # expecting that name — only the underlying source column changed.
     reg = pd.read_csv(REG_PATH, usecols=[
-        "city", "country", "log_pop", "climate_zone", "colonial", "log_gdp"
-    ])
+        "city", "country", "log_pop_worldpop_2022", "climate_zone", "colonial", "log_gdp"
+    ]).rename(columns={"log_pop_worldpop_2022": "log_pop"})
     metrics = metrics.merge(reg, on=["country", "city"], how="left")
 
     # --- QC ---

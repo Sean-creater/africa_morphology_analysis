@@ -63,12 +63,17 @@ REF_COLONIAL = "British"
 # Load
 # ---------------------------------------------------------------------------
 def load_data():
+    """Population is WorldPop 2022 (log_pop_worldpop_2022) — see
+    00_prepare_data.py's docstring for the population-definition policy."""
     path = OUT_DIR / "analysis_input.csv"
     df = pd.read_csv(path).dropna(
-        subset=["climate_zone", "colonial", "log_gdp", "log_pop"]
+        subset=["climate_zone", "colonial", "log_gdp", "log_pop_worldpop_2022"]
     ).reset_index(drop=True)
     df["log_gdp_std"] = (df["log_gdp"] - df["log_gdp"].mean()) / df["log_gdp"].std()
-    df["log_pop_std"] = (df["log_pop"] - df["log_pop"].mean()) / df["log_pop"].std()
+    df["log_pop_std"] = (
+        (df["log_pop_worldpop_2022"] - df["log_pop_worldpop_2022"].mean())
+        / df["log_pop_worldpop_2022"].std()
+    )
     return df
 
 
