@@ -40,6 +40,10 @@ outputs/tables/analysis_input.csv
       log_pop_africapolis_2020
                     (sensitivity-only; Africapolis 2020, retained for
                     comparison, NOT used in the primary MNL model),
+      n_population_cells, n_valid_population_cells, population_coverage
+                    (grid-cell coverage of the Pop2022 field this city's
+                    population_worldpop_2022 was summed from — see the
+                    exclusion rule below),
       lat_c, lon_c  (mean-centred, SD-scaled latitude/longitude),
       lat2, lon2, lat_lon  (second-order spatial polynomial terms).
 outputs/tables/covariate_summary.csv
@@ -120,6 +124,15 @@ OUT_TABLES  = ROOT / "outputs" / "tables"
 CD_OUT      = ROOT.parent / "community_detection" / "outputs"
 CENTRES_PQ  = (ROOT.parent.parent / "04_center_periphery" / "core"
                / "outputs" / "tables" / "city_centres.parquet")
+
+# Minimum fraction of a city's grid cells that must have a valid (finite,
+# positive) Pop2022 value for that city's total_pop2022 to be trusted as a
+# population estimate. 7900 cities have population_coverage == 1.0 in the
+# vast majority of cases (median and 75th percentile are both exactly
+# 1.0); only 67 cities (0.85%) fall below 0.95, so this threshold excludes
+# a small, genuinely low-coverage tail rather than a systematic chunk of
+# the sample.
+MIN_POPULATION_COVERAGE = 0.95
 
 COLONIAL_MAP = {
     "United Kingdom": "British",
@@ -292,8 +305,15 @@ def main() -> None:
             f"city_centres.parquet not found: {CENTRES_PQ}\n"
             "Run 04_center_periphery/core/01_define_centres.py first."
         )
-    centres_df = pd.read_parquet(CENTRES_PQ, columns=["city", "country", "total_pop2022"])
-    centres_df = centres_df.rename(columns={"total_pop2022": "population_worldpop_2022"})
+    centres_df = pd.read_parquet(
+        CENTRES_PQ,
+        columns=["city", "country", "total_pop2022",
+                 "n_cells", "n_valid_population_cells", "population_coverage"],
+    )
+    centres_df = centres_df.rename(columns={
+        "total_pop2022": "population_worldpop_2022",
+        "n_cells": "n_population_cells",
+    })
     n_before = len(city_df)
     city_df = city_df.merge(centres_df, on=["city", "country"], how="left")
     n_unmatched = city_df["population_worldpop_2022"].isna().sum()
@@ -356,16 +376,25 @@ def main() -> None:
     # --- Population validity (WorldPop 2022, primary) ---
     # Zero, missing, or non-finite population is flagged and EXCLUDED from
     # the model sample rather than imputed (no clip(lower=1)-style fix),
-    # per the population-definition policy documented above.
-    pop_wp = df["population_worldpop_2022"]
-    df["population_worldpop_2022_valid"] = np.isfinite(pop_wp) & (pop_wp > 0)
+    # per the population-definition policy documented above. A city is
+    # also excluded if fewer than MIN_POPULATION_COVERAGE of its grid
+    # cells have a valid (finite, positive) Pop2022 value — a low-coverage
+    # city's total_pop2022 sum is not a reliable population estimate even
+    # when it happens to be positive.
+    pop_wp   = df["population_worldpop_2022"]
+    coverage = df["population_coverage"]
+    valid_pop      = np.isfinite(pop_wp) & (pop_wp > 0)
+    valid_coverage = coverage.fillna(0) >= MIN_POPULATION_COVERAGE
+    df["population_worldpop_2022_valid"] = valid_pop & valid_coverage
     n_invalid = (~df["population_worldpop_2022_valid"]).sum()
     if n_invalid > 0:
+        excluded = df.loc[~df["population_worldpop_2022_valid"],
+                          ["city", "country", "population_coverage"]]
         logging.warning(
-            "%d cities have zero/missing/unmatched WorldPop 2022 population "
-            "and are EXCLUDED from the model sample (not imputed):\n%s",
-            n_invalid,
-            df.loc[~df["population_worldpop_2022_valid"], ["city", "country"]].to_string(),
+            "%d cities have zero/missing/unmatched WorldPop 2022 population, "
+            "or population_coverage below %.0f%%, and are EXCLUDED from the "
+            "model sample (not imputed):\n%s",
+            n_invalid, MIN_POPULATION_COVERAGE * 100, excluded.to_string(),
         )
     df = df[df["population_worldpop_2022_valid"]].copy()
     df["log_pop_worldpop_2022"] = np.log(df["population_worldpop_2022"])
@@ -401,6 +430,7 @@ def main() -> None:
         "log_gdp",
         "log_pop_worldpop_2022", "log_pop_worldpop_2022_std",
         "log_pop_africapolis_2020",
+        "n_population_cells", "n_valid_population_cells", "population_coverage",
         "lat_c", "lon_c", "lat2", "lon2", "lat_lon",
     ]
     out = df[out_cols].copy()

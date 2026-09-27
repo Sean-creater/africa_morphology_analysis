@@ -52,11 +52,19 @@ Usage
 
 Notes
 -----
-- Pop2022 is estimated population count (WorldPop 2022, summed from 100m to
-  250m hex by GridWorkflow). It is used solely for spatial centre definition;
-  city-size regression controls use population_2020 from AFRICAPOLIS.
+- Pop2022 is estimated population count (area-weighted WorldPop 2022,
+  aggregated to the 250-m hex grid; see the companion
+  africa_hex_grid_workflow repository). It is the primary population
+  variable used throughout the analysis (see
+  02_regional_structure/regression/00_prepare_data.py).
 - Cities with no SHP or total Pop2022 = 0 are flagged centre_qc = False and
   fall back to geom_centroid for all three centre fields.
+- The city list is read directly from SHP_ROOT's directory structure
+  (SHP_ROOT/<country>/<city>/), not from analysis_input.csv, since that
+  file is itself produced downstream of this script's output
+  (city_centres.parquet feeds population_worldpop_2022 into
+  02_regional_structure/regression/00_prepare_data.py) — reading it here
+  would make the two scripts depend on each other's output.
 - Parallelised over cities using ProcessPoolExecutor.
 """
 
@@ -80,8 +88,6 @@ logging.basicConfig(
 ROOT     = Path(__file__).resolve().parent
 SHP_ROOT = Path("/home/sjs96_file_share/Momepy_workflow/Metrix/"
                 "data_cleaning_20260224/SHP_cleaned")
-REG_PATH = (ROOT.parent.parent / "02_regional_structure" /
-            "regression" / "outputs" / "tables" / "analysis_input.csv")
 OUT_DIR  = ROOT / "outputs" / "tables"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -129,7 +135,7 @@ def _queen_clusters(indices_2d, shape):
 # Per-city worker
 # ---------------------------------------------------------------------------
 def _process_city(args):
-    country, city, city_lon_ref, city_lat_ref = args
+    country, city = args
 
     shp_dir = SHP_ROOT / country / city
     if not shp_dir.exists():
@@ -147,10 +153,13 @@ def _process_city(args):
         crs = gdf.crs
         cx  = gdf["center_x"].to_numpy(dtype=float)   # local projected CRS
         cy  = gdf["center_y"].to_numpy(dtype=float)
-        pop = gdf["Pop2022"].to_numpy(dtype=float)
-        pop = np.where(np.isfinite(pop) & (pop > 0), pop, 0.0)
+        pop_raw = gdf["Pop2022"].to_numpy(dtype=float)
+        valid_mask = np.isfinite(pop_raw) & (pop_raw > 0)
+        pop = np.where(valid_mask, pop_raw, 0.0)
 
-        n_cells   = len(gdf)
+        n_cells                  = len(gdf)
+        n_valid_population_cells = int(valid_mask.sum())
+        population_coverage      = n_valid_population_cells / n_cells if n_cells > 0 else 0.0
         total_pop = pop.sum()
 
         # ------------------------------------------------------------------
@@ -270,6 +279,8 @@ def _process_city(args):
             "country": country,
             "n_cells": n_cells,
             "total_pop2022": total_pop,
+            "n_valid_population_cells": n_valid_population_cells,
+            "population_coverage": population_coverage,
 
             # Primary population centre (MAIN)
             "primary_pop_x":   prim_cx,
@@ -314,15 +325,15 @@ def _process_city(args):
 # Main
 # ---------------------------------------------------------------------------
 def main(n_workers: int = 14) -> None:
-    logging.info("Loading city list from %s ...", REG_PATH.name)
-    reg_df = pd.read_csv(REG_PATH, usecols=["city", "country",
-                                             "latitude", "longitude"])
-    logging.info("  %d cities.", len(reg_df))
-
+    logging.info("Scanning city list from %s ...", SHP_ROOT)
     tasks = [
-        (row["country"], row["city"], row["longitude"], row["latitude"])
-        for _, row in reg_df.iterrows()
+        (country_dir.name, city_dir.name)
+        for country_dir in sorted(SHP_ROOT.iterdir())
+        if country_dir.is_dir()
+        for city_dir in sorted(country_dir.iterdir())
+        if city_dir.is_dir()
     ]
+    logging.info("  %d cities.", len(tasks))
 
     logging.info("Defining centres with %d workers ...", n_workers)
     results = []

@@ -237,20 +237,36 @@ def build_knn_graph(D: np.ndarray, k: int) -> ig.Graph:
     depend on row order rather than purely on distance. Union
     symmetrization keeps every edge either side actively selected, with no
     duplicate edge when the selection is mutual.
+
+    Self is excluded explicitly (row[i]=inf) rather than by assuming
+    argsort places the zero self-distance at position 0 — some city pairs
+    have identical 17-type composition (distance exactly 0), so another
+    city can tie with self for the nearest position and argsort's ordering
+    among ties is not something to rely on. Ties at the k-th neighbour are
+    all kept (rather than arbitrarily broken by index), so a city's actual
+    degree can exceed k when its k-th and (k+1)-th distances are equal.
     """
     n = len(D)
     if not np.allclose(D, D.T, atol=1e-8):
         raise ValueError("build_knn_graph: distance matrix D is not symmetric.")
+    if not np.isfinite(D).all():
+        raise ValueError("build_knn_graph: distance matrix D contains non-finite values.")
+    if not np.allclose(np.diag(D), 0):
+        raise ValueError("build_knn_graph: distance matrix D has non-zero diagonal.")
+    if not (1 <= k < n):
+        raise ValueError(f"build_knn_graph: k={k} must satisfy 1 <= k < n={n}.")
 
     sigma = float(np.median(D[D > 0]))
     directed_pairs = set()
     for i in range(n):
-        nbrs = np.argsort(D[i])[1: k + 1]
+        row = D[i].copy()
+        row[i] = np.inf
+        kth_dist = np.partition(row, k - 1)[k - 1]
+        nbrs = np.where(row <= kth_dist)[0]
         for j in nbrs:
-            if i != j:
-                directed_pairs.add((int(i), int(j)))
+            directed_pairs.add((int(i), int(j)))
 
-    undirected_pairs = {(min(i, j), max(i, j)) for i, j in directed_pairs}
+    undirected_pairs = sorted({(min(i, j), max(i, j)) for i, j in directed_pairs})
 
     edges, weights = [], []
     for i, j in undirected_pairs:
@@ -403,7 +419,7 @@ def main():
     # Print summary inline
     vc = pd.Series(mem_main).value_counts().sort_index()
     print(f"\nMain run (α={args.alpha}, k={args.k}): "
-          f"{vc.nunique()} communities, Q stored in log above")
+          f"{len(vc)} communities, Q stored in log above")
     print("Sizes:", vc.values.tolist())
     save_summary(df_main, args.alpha, args.k)
 

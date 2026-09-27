@@ -7,7 +7,7 @@ representative per collinear group.
 
 Method
 ------
-1. Compute the full 165×165 Spearman rank-correlation matrix.
+1. Compute the full 164×164 Spearman rank-correlation matrix.
 2. Convert to a distance matrix: d_ij = 1 − |ρ_ij|.
 3. Apply complete-linkage hierarchical clustering.  Cut the tree at
    distance threshold t = 1 − THRESHOLD (default THRESHOLD=0.90, so t=0.10).
@@ -24,12 +24,12 @@ Method
 Outputs
 -------
 outputs/tables/feature_groups.csv
-    All 165 features with group ID, intra-group η² rank, selection flag,
+    All 164 features with group ID, intra-group η² rank, selection flag,
     η² value, and dimension label.
 outputs/tables/selected_features.csv
     Deduplicated feature list (one representative per group; selected == True).
 outputs/tables/dimension_labels.json
-    {feature: dimension_label} mapping for all 165 features.
+    {feature: dimension_label} mapping for all 164 features.
 
 Usage
 -----
@@ -60,7 +60,7 @@ MODEL_INPUT  = ROOT / "outputs" / "tables" / "merged_k17.parquet"
 OUT_TABLES   = ROOT / "outputs" / "tables"
 
 # ---------------------------------------------------------------------------
-# Feature columns (165 morphometric indicators, M6 input space)
+# Feature columns (164 morphometric indicators, M6 input space)
 # ---------------------------------------------------------------------------
 FEATURE_COLS = [
     "LC_Shrub","LC_Herb","LC_Crop","LC_Built","LC_Bare","LC_Snow","LC_Water",

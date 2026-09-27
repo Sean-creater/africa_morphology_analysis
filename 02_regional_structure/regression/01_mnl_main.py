@@ -31,15 +31,26 @@ M3_ng   M3 without GDP
 M3_np   M3 without population
 M3_nl   M3 without colonial legacy
 
+Population definition
+----------------------
+run_analysis(pop_col, output_suffix) runs this entire analysis for one
+population column. main() calls it twice: once for the primary analysis
+(WorldPop 2022, output_suffix="") and once as a sensitivity check
+(Africapolis 2020, output_suffix="_sensitivity_africapolis2020"), so the
+M3 population coefficient, AME, and drop-one contribution can be compared
+directly across population definitions.
+
 Outputs
 -------
-outputs/tables/mnl_fit.csv
-outputs/tables/mnl_lrt.csv
-outputs/tables/mnl_factor_contribution.csv   ← Q1 summary
-outputs/tables/mnl_coefs_M3.csv
-outputs/tables/mnl_aap_climate_M3.csv        ← Q2
-outputs/tables/mnl_aap_colonial_M3.csv       ← Q2
-outputs/tables/mnl_ame_M3.csv                ← Q2
+outputs/tables/mnl_fit{suffix}.csv
+outputs/tables/mnl_lrt{suffix}.csv
+outputs/tables/mnl_factor_contribution{suffix}.csv   ← Q1 summary
+outputs/tables/mnl_coefs_M3{suffix}.csv
+outputs/tables/mnl_aap_climate_M3{suffix}.csv        ← Q2
+outputs/tables/mnl_aap_colonial_M3{suffix}.csv       ← Q2
+outputs/tables/mnl_ame_M3{suffix}.csv                ← Q2
+  where {suffix} is "" for the primary (WorldPop 2022) run and
+  "_sensitivity_africapolis2020" for the sensitivity run.
 
 Usage
 -----
@@ -53,7 +64,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy import stats
-from sklearn.model_selection import StratifiedKFold
+from sklearn.model_selection import StratifiedGroupKFold
 
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import MNLogit
@@ -78,23 +89,34 @@ RNG_SEED     = 42
 # ---------------------------------------------------------------------------
 # Load & build design matrices
 # ---------------------------------------------------------------------------
-def load_data():
-    """Population is WorldPop 2022 (log_pop_worldpop_2022, aggregated by
-    00_prepare_data.py from the area-weighted WorldPop 2022 grid within
-    each Africapolis urban agglomeration) — see that script's docstring
-    for the population-definition policy and the Africapolis-2020
-    sensitivity comparison."""
+def load_data(pop_col="log_pop_worldpop_2022"):
+    """Population is WorldPop 2022 by default (log_pop_worldpop_2022,
+    aggregated by 00_prepare_data.py from the area-weighted WorldPop 2022
+    grid within each Africapolis urban agglomeration) — see that script's
+    docstring for the population-definition policy.
+
+    Args:
+        pop_col: which column in analysis_input.csv to use as the model's
+            population covariate. "log_pop_worldpop_2022" (default,
+            primary analysis) or "log_pop_africapolis_2020" (sensitivity
+            analysis — see run_analysis / main). Internally always
+            re-exposed to the rest of this module as the generic "log_pop"
+            / "log_pop_std" columns, so build_X / cv_logloss / compute_ame
+            don't need to know which definition is in use.
+    """
     path = OUT_DIR / "analysis_input.csv"
     df = pd.read_csv(path).dropna(
-        subset=["climate_zone", "colonial", "log_gdp", "log_pop_worldpop_2022"]
+        subset=["climate_zone", "colonial", "log_gdp", pop_col]
     ).reset_index(drop=True)
     df["log_gdp_std"] = (df["log_gdp"] - df["log_gdp"].mean()) / df["log_gdp"].std()
-    df["log_pop_std"] = (
-        (df["log_pop_worldpop_2022"] - df["log_pop_worldpop_2022"].mean())
-        / df["log_pop_worldpop_2022"].std()
-    )
-    log.info("Loaded %d cities, %d countries, %d communities.",
-             len(df), df["country"].nunique(), df["community"].nunique())
+    # "log_pop" is the generic name build_X / cv_logloss standardise from —
+    # it holds whichever population definition pop_col names, so the rest
+    # of this module never needs to know if that's WorldPop2022 or
+    # Africapolis2020.
+    df["log_pop"] = df[pop_col]
+    df["log_pop_std"] = (df["log_pop"] - df["log_pop"].mean()) / df["log_pop"].std()
+    log.info("Loaded %d cities, %d countries, %d communities (population column: %s).",
+             len(df), df["country"].nunique(), df["community"].nunique(), pop_col)
     return df
 
 
@@ -105,14 +127,33 @@ def make_dummies(series, prefix, ref):
 
 
 def build_X(df, climate=False, gdp=False, pop=False, colonial=False,
-            spatial=False):
+            spatial=False, std_stats=None):
+    """Build the design matrix for one model spec.
+
+    Args:
+        std_stats: optional {"log_gdp": (mean, std), "log_pop":
+            (mean, std)} to standardise gdp/pop with externally-supplied
+            statistics rather than this df's own mean/std — used by
+            cv_logloss so each CV fold standardises using only its
+            training-fold statistics, not statistics that have already
+            seen the held-out fold.
+    """
+    std_stats = std_stats or {}
     parts = []
     if climate:
         parts.append(make_dummies(df["climate_zone"], "clim", REF_CLIMATE))
     if gdp:
-        parts.append(df["log_gdp_std"])
+        if "log_gdp" in std_stats:
+            m, s = std_stats["log_gdp"]
+            parts.append(((df["log_gdp"] - m) / s).rename("log_gdp_std"))
+        else:
+            parts.append(df["log_gdp_std"])
     if pop:
-        parts.append(df["log_pop_std"])
+        if "log_pop" in std_stats:
+            m, s = std_stats["log_pop"]
+            parts.append(((df["log_pop"] - m) / s).rename("log_pop_std"))
+        else:
+            parts.append(df["log_pop_std"])
     if colonial:
         parts.append(make_dummies(df["colonial"], "col", REF_COLONIAL))
     if spatial:
@@ -212,21 +253,67 @@ def fit_mnl(X, y, df, name):
 # ---------------------------------------------------------------------------
 # Cross-validated log-loss
 # ---------------------------------------------------------------------------
-def cv_logloss(X, y, df, n_splits=CV_FOLDS, seed=RNG_SEED):
-    """Mean per-observation log-loss over stratified k-fold CV."""
+def cv_logloss(df, y, X_spec, n_splits=CV_FOLDS, seed=RNG_SEED):
+    """Mean per-observation log-loss over country-grouped stratified k-fold CV.
+
+    Uses StratifiedGroupKFold with groups=df["country"] rather than plain
+    StratifiedKFold: GDP and colonial legacy are country-level variables,
+    so a random per-city split puts cities from the same country — sharing
+    the same GDP/colonial values — in both the training and test fold,
+    which overstates how well the model generalises to unseen countries.
+
+    Standardisation of log_gdp / log_pop is refit on each
+    training fold and applied to that fold's test set (via build_X's
+    std_stats), rather than using statistics computed on the full sample
+    before splitting, which would leak test-fold information into the
+    standardisation the model is fit on.
+    """
     communities = sorted(y.unique())
     ref_comm    = REF_COMM
     comm_order  = [ref_comm] + [c for c in communities if c != ref_comm]
     y_cat       = pd.Categorical(y, categories=comm_order)
     y_codes     = np.array(y_cat.codes)
+    groups      = df["country"].values
 
-    X_c  = sm.add_constant(X, has_constant="add")
-    skf  = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    sgkf = StratifiedGroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     losses = []
 
-    for fold, (tr, te) in enumerate(skf.split(X_c, y_codes)):
-        X_tr, y_tr = X_c.iloc[tr], y_codes[tr]
-        X_te, y_te = X_c.iloc[te], y_codes[te]
+    for fold, (tr, te) in enumerate(sgkf.split(df, y_codes, groups=groups)):
+        df_tr, y_tr = df.iloc[tr].reset_index(drop=True), y_codes[tr]
+        df_te       = df.iloc[te].reset_index(drop=True)
+        y_te        = y_codes[te]
+
+        n_countries_tr = df_tr["country"].nunique()
+        n_countries_te = df_te["country"].nunique()
+        te_communities = set(np.unique(y_te))
+        tr_communities = set(np.unique(y_tr))
+        if not te_communities <= tr_communities:
+            log.warning(
+                "CV fold %d: test fold contains community codes absent "
+                "from the training fold (%s) — skipping.",
+                fold, te_communities - tr_communities,
+            )
+            continue
+        log.info(
+            "  CV fold %d: %d train cities / %d countries, "
+            "%d test cities / %d countries, %d/%d outcome communities in test.",
+            fold, len(df_tr), n_countries_tr, len(df_te), n_countries_te,
+            len(te_communities), len(tr_communities),
+        )
+
+        std_stats = {}
+        if X_spec.get("gdp"):
+            std_stats["log_gdp"] = (df_tr["log_gdp"].mean(), df_tr["log_gdp"].std())
+        if X_spec.get("pop"):
+            std_stats["log_pop"] = (
+                df_tr["log_pop"].mean(),
+                df_tr["log_pop"].std(),
+            )
+
+        X_tr = sm.add_constant(build_X(df_tr, std_stats=std_stats, **X_spec), has_constant="add")
+        X_te = sm.add_constant(build_X(df_te, std_stats=std_stats, **X_spec), has_constant="add")
+        X_te = X_te.reindex(columns=X_tr.columns, fill_value=0.0)
+
         res = None
         for method in ("bfgs", "lbfgs"):
             try:
@@ -240,7 +327,7 @@ def cv_logloss(X, y, df, n_splits=CV_FOLDS, seed=RNG_SEED):
             except Exception:
                 continue
         if res is None:
-            log.warning("CV fold %d failed — skipping.", fold)
+            log.warning("CV fold %d failed to fit — skipping.", fold)
             continue
 
         params = np.asarray(res.params)      # (n_feat, J-1)
@@ -282,8 +369,23 @@ def pred_probs(X_arr, params):
     return exp_l / exp_l.sum(axis=1, keepdims=True)
 
 
-def compute_ame(res, df, focal_vars, n_boot=N_BOOT, seed=RNG_SEED):
-    """AME for continuous predictors (+1 SD), bootstrap CI clustered by country."""
+def compute_ame(res, df, focal_vars, X_spec, n_boot=N_BOOT, seed=RNG_SEED):
+    """AME for continuous predictors (+1 SD), bootstrap CI clustered by
+    country.
+
+    Each bootstrap replicate resamples countries with replacement and
+    REFITS MNLogit on that resampled design (not just the point-estimate
+    coefficients from the full-sample fit), so the resulting CI reflects
+    both which cities/countries were resampled and the coefficient
+    estimation uncertainty that resampling induces. A CI built by holding
+    params fixed and only resampling the predicted-probability inputs (as
+    an earlier version of this function did) only reflects the first of
+    those two sources.
+
+    Args:
+        X_spec: build_X(df, ...) kwargs used for the original fit, so each
+            replicate builds its design matrix the same way.
+    """
     if res is None:
         return pd.DataFrame()
     params     = res["result"].params.values
@@ -294,29 +396,56 @@ def compute_ame(res, df, focal_vars, n_boot=N_BOOT, seed=RNG_SEED):
     countries  = df["country"].values
     unique_c   = np.unique(countries)
 
-    rows = []
+    ame_pt = {}
     for var in focal_vars:
         if var not in col_map:
             continue
-        ci        = col_map[var]
-        X_hi      = X_arr.copy(); X_hi[:, ci] += 1.0
-        dP        = pred_probs(X_hi, params) - pred_probs(X_arr, params)
-        ame_pt    = dP.mean(axis=0)
+        ci     = col_map[var]
+        X_hi   = X_arr.copy(); X_hi[:, ci] += 1.0
+        dP     = pred_probs(X_hi, params) - pred_probs(X_arr, params)
+        ame_pt[var] = dP.mean(axis=0)
 
-        boot = np.zeros((n_boot, len(communities)))
-        for b in range(n_boot):
-            samp = rng.choice(unique_c, size=len(unique_c), replace=True)
-            idx  = np.concatenate([np.where(countries == c)[0] for c in samp])
-            boot[b] = (pred_probs(X_hi[idx], params) -
-                       pred_probs(X_arr[idx], params)).mean(axis=0)
-        ci_lo = np.percentile(boot, 2.5,  axis=0)
-        ci_hi = np.percentile(boot, 97.5, axis=0)
+    boot = {var: [] for var in ame_pt}
+    n_failed = 0
+    for b in range(n_boot):
+        samp = rng.choice(unique_c, size=len(unique_c), replace=True)
+        idx  = np.concatenate([np.where(countries == c)[0] for c in samp])
+        df_b = df.iloc[idx].reset_index(drop=True)
+        X_b  = build_X(df_b, **X_spec)
+        y_b  = df_b["community"]
 
+        res_b = fit_mnl(X_b, y_b, df_b, name=f"AME_boot_{b}")
+        if res_b is None or res_b["communities"] != communities:
+            n_failed += 1
+            continue
+        params_b  = res_b["result"].params.values
+        X_b_arr   = res_b["X_const"].values.astype(float)
+        col_map_b = {n: i for i, n in enumerate(res_b["feature_names"])}
+
+        for var in ame_pt:
+            if var not in col_map_b:
+                continue
+            ci_b   = col_map_b[var]
+            X_b_hi = X_b_arr.copy(); X_b_hi[:, ci_b] += 1.0
+            dP_b   = pred_probs(X_b_hi, params_b) - pred_probs(X_b_arr, params_b)
+            boot[var].append(dP_b.mean(axis=0))
+
+    if n_failed:
+        log.warning("compute_ame: %d/%d bootstrap replicates failed to fit "
+                    "or produced a different community set and were dropped.",
+                    n_failed, n_boot)
+
+    rows = []
+    for var, pt in ame_pt.items():
+        boot_arr = np.array(boot[var]) if boot[var] else np.full((1, len(communities)), np.nan)
+        ci_lo = np.percentile(boot_arr, 2.5,  axis=0)
+        ci_hi = np.percentile(boot_arr, 97.5, axis=0)
         for j, comm in enumerate(communities):
             rows.append({"focal_var": var, "community": comm,
-                         "ame": round(float(ame_pt[j]), 6),
+                         "ame": round(float(pt[j]), 6),
                          "ci_lo_95": round(float(ci_lo[j]), 6),
-                         "ci_hi_95": round(float(ci_hi[j]), 6)})
+                         "ci_hi_95": round(float(ci_hi[j]), 6),
+                         "n_boot_valid": len(boot[var])})
     return pd.DataFrame(rows)
 
 
@@ -351,26 +480,37 @@ def compute_aap(res, df, group_var, dummy_prefix, ref_val, all_vals):
 
 
 # ---------------------------------------------------------------------------
-# Main
+# Main analysis (parameterised over the population definition, so the
+# Africapolis-2020 sensitivity run below is the SAME analysis re-run on a
+# different population column, not a separate comparison of raw population
+# values only)
 # ---------------------------------------------------------------------------
-def main():
-    df = load_data()
+def run_analysis(pop_col="log_pop_worldpop_2022", output_suffix=""):
+    """Run the full M0-M4 / drop-one / AAP / AME analysis using pop_col as
+    the population covariate, writing outputs/tables/mnl_*{output_suffix}.csv.
+
+    Returns:
+        {"fit": fit_rows, "factor_contribution": factor_rows} — the two
+        tables most useful for comparing population definitions without
+        re-reading the CSVs.
+    """
+    df = load_data(pop_col=pop_col)
     y  = df["community"]
 
     # ---- Design matrices ----
-    Xs = {
-        "M0":    build_X(df),
-        "M1":    build_X(df, climate=True),
-        "M2":    build_X(df, climate=True, gdp=True),
-        "M2b":   build_X(df, climate=True, gdp=True, pop=True),
-        "M3":    build_X(df, climate=True, gdp=True, pop=True, colonial=True),
-        "M4":    build_X(df, climate=True, gdp=True, pop=True, colonial=True,
-                         spatial=True),
-        "M3_nc": build_X(df, gdp=True, pop=True, colonial=True),
-        "M3_ng": build_X(df, climate=True, pop=True, colonial=True),
-        "M3_np": build_X(df, climate=True, gdp=True, colonial=True),
-        "M3_nl": build_X(df, climate=True, gdp=True, pop=True),
+    X_specs = {
+        "M0":    dict(),
+        "M1":    dict(climate=True),
+        "M2":    dict(climate=True, gdp=True),
+        "M2b":   dict(climate=True, gdp=True, pop=True),
+        "M3":    dict(climate=True, gdp=True, pop=True, colonial=True),
+        "M4":    dict(climate=True, gdp=True, pop=True, colonial=True, spatial=True),
+        "M3_nc": dict(gdp=True, pop=True, colonial=True),
+        "M3_ng": dict(climate=True, pop=True, colonial=True),
+        "M3_np": dict(climate=True, gdp=True, colonial=True),
+        "M3_nl": dict(climate=True, gdp=True, pop=True),
     }
+    Xs = {name: build_X(df, **spec) for name, spec in X_specs.items()}
 
     # ---- Fit ----
     results = {}
@@ -400,7 +540,7 @@ def main():
     cv_loss   = {}
     for name in cv_models:
         log.info("  CV %s ...", name)
-        cv_loss[name] = cv_logloss(Xs[name], y, df)
+        cv_loss[name] = cv_logloss(df, y, X_specs[name])
         log.info("  %s CV log-loss = %.4f", name, cv_loss[name])
 
     for row in fit_rows:
@@ -434,7 +574,7 @@ def main():
         res_drop = results[key]
         if res_drop and results["M3"]:
             dr2  = results["M3"]["pseudo_r2"] - res_drop["pseudo_r2"]
-            dcv  = cv_logloss(Xs[key], y, df) - m3_cv   # positive = M3 better
+            dcv  = cv_logloss(df, y, X_specs[key]) - m3_cv   # positive = M3 better
             chi2 = 2 * (results["M3"]["loglik"] - res_drop["loglik"])
             df_  = results["M3"]["k_params"] - res_drop["k_params"]
             pv   = stats.chi2.sf(chi2, df_)
@@ -458,28 +598,58 @@ def main():
     aap_col  = compute_aap(results["M3"], df,
                            "colonial",     "col",  REF_COLONIAL, col_vals)
     ame      = compute_ame(results["M3"], df,
-                           ["log_gdp_std", "log_pop_std"])
+                           ["log_gdp_std", "log_pop_std"],
+                           X_spec=dict(climate=True, gdp=True, pop=True, colonial=True))
 
     # ---- Save ----
-    pd.DataFrame(fit_rows).to_csv(OUT_DIR / "mnl_fit.csv", index=False)
-    pd.DataFrame(lrt_rows).to_csv(OUT_DIR / "mnl_lrt.csv", index=False)
-    pd.DataFrame(factor_rows).to_csv(OUT_DIR / "mnl_factor_contribution.csv",
+    suffix = output_suffix
+    pd.DataFrame(fit_rows).to_csv(OUT_DIR / f"mnl_fit{suffix}.csv", index=False)
+    pd.DataFrame(lrt_rows).to_csv(OUT_DIR / f"mnl_lrt{suffix}.csv", index=False)
+    pd.DataFrame(factor_rows).to_csv(OUT_DIR / f"mnl_factor_contribution{suffix}.csv",
                                      index=False)
     if coef_tables:
-        pd.concat(coef_tables).to_csv(OUT_DIR / "mnl_coefs_M3.csv",
+        pd.concat(coef_tables).to_csv(OUT_DIR / f"mnl_coefs_M3{suffix}.csv",
                                        index=False)
     if not aap_clim.empty:
-        aap_clim.to_csv(OUT_DIR / "mnl_aap_climate_M3.csv", index=False)
+        aap_clim.to_csv(OUT_DIR / f"mnl_aap_climate_M3{suffix}.csv", index=False)
     if not aap_col.empty:
-        aap_col.to_csv(OUT_DIR / "mnl_aap_colonial_M3.csv", index=False)
+        aap_col.to_csv(OUT_DIR / f"mnl_aap_colonial_M3{suffix}.csv", index=False)
     if not ame.empty:
-        ame.to_csv(OUT_DIR / "mnl_ame_M3.csv", index=False)
+        ame.to_csv(OUT_DIR / f"mnl_ame_M3{suffix}.csv", index=False)
 
     # ---- Console summary ----
-    print("\n=== Model fit ===")
+    print(f"\n=== Model fit (population={pop_col}) ===")
     print(pd.DataFrame(fit_rows).to_string(index=False))
-    print("\n=== Factor contributions (Q1) ===")
+    print(f"\n=== Factor contributions (Q1, population={pop_col}) ===")
     print(pd.DataFrame(factor_rows).to_string(index=False))
+
+    return {"fit": pd.DataFrame(fit_rows), "factor_contribution": pd.DataFrame(factor_rows)}
+
+
+def main():
+    """Primary analysis: WorldPop 2022. Then re-runs the identical analysis
+    with Africapolis 2020 as a sensitivity check (output_suffix
+    "_sensitivity_africapolis2020"), so the M3 population coefficient,
+    AME, drop-one LRT and delta-pseudo-R^2 can be compared directly across
+    population definitions rather than only comparing the two raw
+    population values (population_definition_comparison.csv, produced by
+    00_prepare_data.py, does the latter)."""
+    log.info("=== Primary analysis: population = WorldPop 2022 ===")
+    primary = run_analysis(pop_col="log_pop_worldpop_2022", output_suffix="")
+
+    log.info("=== Sensitivity analysis: population = Africapolis 2020 ===")
+    sensitivity = run_analysis(pop_col="log_pop_africapolis_2020",
+                               output_suffix="_sensitivity_africapolis2020")
+
+    pop_row_primary     = primary["factor_contribution"].query("factor_group == 'pop'")
+    pop_row_sensitivity = sensitivity["factor_contribution"].query("factor_group == 'pop'")
+    log.info(
+        "\n=== Population coefficient sensitivity: WorldPop2022 vs Africapolis2020 ===\n"
+        "  WorldPop2022   delta_pseudo_r2=%.4f  lrt_p=%.3g\n"
+        "  Africapolis2020 delta_pseudo_r2=%.4f  lrt_p=%.3g",
+        pop_row_primary["delta_pseudo_r2"].iloc[0], pop_row_primary["lrt_p"].iloc[0],
+        pop_row_sensitivity["delta_pseudo_r2"].iloc[0], pop_row_sensitivity["lrt_p"].iloc[0],
+    )
 
 
 if __name__ == "__main__":

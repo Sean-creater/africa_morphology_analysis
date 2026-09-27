@@ -114,7 +114,30 @@ def merge_with_labels(metrics: pd.DataFrame, labels_csv: Path) -> pd.DataFrame:
     labels = pd.read_csv(labels_csv, usecols=["grid_id", "city", "country", "label_k17"])
     labels.rename(columns={"grid_id": "GridID"}, inplace=True)
 
-    merged = metrics.merge(labels, on="GridID", how="inner")
+    # GridID is expected to be globally unique on both sides (it embeds a
+    # country code + city index + cell index, e.g. "DZA_0050_000008"), so
+    # this merge should never fan out. Assert uniqueness explicitly and
+    # pass validate="one_to_one" so a future GridID collision — e.g. a
+    # city-numbering clash introduced upstream — raises immediately
+    # instead of silently producing a many-to-many join with duplicated
+    # rows.
+    if not metrics["GridID"].is_unique:
+        dupes = metrics.loc[metrics["GridID"].duplicated(keep=False), "GridID"]
+        raise ValueError(
+            f"metrics['GridID'] is not unique ({dupes.nunique()} duplicated "
+            f"values, {len(dupes)} rows) — merge_with_labels assumes a "
+            "one-to-one join. Examples: "
+            f"{dupes.unique()[:5].tolist()}"
+        )
+    if not labels["GridID"].is_unique:
+        dupes = labels.loc[labels["GridID"].duplicated(keep=False), "GridID"]
+        raise ValueError(
+            f"labels['GridID'] (from grid_id) is not unique ({dupes.nunique()} "
+            f"duplicated values, {len(dupes)} rows) — merge_with_labels assumes "
+            f"a one-to-one join. Examples: {dupes.unique()[:5].tolist()}"
+        )
+
+    merged = metrics.merge(labels, on="GridID", how="inner", validate="one_to_one")
     n_dropped = len(metrics) - len(merged)
     if n_dropped > 0:
         logging.warning(
