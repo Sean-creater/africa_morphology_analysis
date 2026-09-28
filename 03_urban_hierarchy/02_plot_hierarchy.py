@@ -100,17 +100,25 @@ def _loess_boot_worker(args):
 
 
 def _loess_ci(df, y_col, x_grid, n_boots, n_workers, frac=LOESS_FRAC):
-    """LOESS point estimate + 95% country-cluster bootstrap CI (cached)."""
-    cache_file = CACHE_DIR / f"loess_ci_{y_col}_b{n_boots}.npz"
+    """LOESS point estimate + 95% country-cluster bootstrap CI (cached).
+
+    The cache is invalidated whenever METRICS' mtime changes, so a
+    regenerated city_metrics.parquet always triggers a fresh bootstrap
+    rather than silently reusing a CI computed from stale input data.
+    """
+    cache_file  = CACHE_DIR / f"loess_ci_{y_col}_b{n_boots}.npz"
+    input_mtime = METRICS.stat().st_mtime
     x   = df["log_pop"].values
     y   = df[y_col].values
     cty = df["country"].values
     y_hat = _fit_loess(x, y, x_grid, frac=frac)
 
     if cache_file.exists():
-        logging.info("  Loading cached CI for %s ...", y_col)
         cached = np.load(cache_file)
-        return y_hat, cached["ci_lo"], cached["ci_hi"]
+        if float(cached.get("input_mtime", -1)) == input_mtime:
+            logging.info("  Loading cached CI for %s ...", y_col)
+            return y_hat, cached["ci_lo"], cached["ci_hi"]
+        logging.info("  Cache stale for %s (input changed), recomputing ...", y_col)
 
     seeds = [int(sq.generate_state(1)[0])
              for sq in np.random.SeedSequence(42).spawn(n_boots)]
@@ -123,7 +131,7 @@ def _loess_ci(df, y_col, x_grid, n_boots, n_workers, frac=LOESS_FRAC):
     preds = np.array(preds)
     ci_lo = np.percentile(preds, 2.5,  axis=0)
     ci_hi = np.percentile(preds, 97.5, axis=0)
-    np.savez(cache_file, ci_lo=ci_lo, ci_hi=ci_hi)
+    np.savez(cache_file, ci_lo=ci_lo, ci_hi=ci_hi, input_mtime=input_mtime)
     logging.info("  CI cached: %s", cache_file.name)
     return y_hat, ci_lo, ci_hi
 

@@ -10,9 +10,13 @@ primary_pop   — MAIN
     Population-weighted centroid of the largest contiguous high-population
     cluster. Steps:
       1. One-hop neighbour smoothing of Pop2022 (prevents single-cell peaks
-         from dominating).
+         from dominating), averaged over each cell's TRUE geometric hex
+         neighbours (see _hex_adjacency_radius).
       2. Candidate cells: top max(10%, 10 cells) by smoothed population.
-      3. Contiguous clusters via Queen (8-neighbour) adjacency on grid index.
+      3. Contiguous clusters via TRUE hexagon adjacency (see _hex_clusters)
+         — not an 8-neighbour rectangular-grid approximation, which does
+         not preserve hex adjacency (adjacent hex rows are offset by half
+         a cell width).
       4. Primary cluster = largest by total (raw) Pop2022.
       5. Centre = population-weighted centroid of primary cluster cells.
 
@@ -77,7 +81,9 @@ import geopandas as gpd
 import numpy as np
 import pandas as pd
 from pyproj import Transformer
-from scipy import ndimage
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
+from scipy.spatial import cKDTree
 
 logging.basicConfig(
     level=logging.INFO,
@@ -115,20 +121,86 @@ def _project_to_wgs84(x_proj, y_proj, crs_from):
     return float(lon), float(lat)
 
 
-def _queen_clusters(indices_2d, shape):
-    """
-    Label contiguous clusters using Queen (8-neighbour) connectivity on a
-    sparse 2-D boolean array defined by (row, col) index pairs.
+def _hex_adjacency_radius(cx: np.ndarray, cy: np.ndarray) -> float:
+    """Adjacency radius for true hexagon-to-hexagon neighbours, calibrated
+    from the actual cell-centre spacing rather than assumed from the SHP's
+    nominal resolution.
 
-    Returns an array of cluster labels (1-based) aligned with indices_2d,
-    and the total number of clusters.
+    Hexagon centres in a pointy/flat-top hex tiling are NOT on a Cartesian
+    grid: alternating rows are offset by half a cell width, so the
+    nearest-neighbour distance (~cell "pitch") is the correct calibration
+    reference for adjacency, rather than any axis-aligned spacing. A single
+    true hex cell has exactly 6 neighbours at (very close to) this pitch
+    distance, with a small multiplicative tolerance for floating-point /
+    projection jitter.
     """
-    mask = np.zeros(shape, dtype=bool)
-    rows, cols = indices_2d[:, 0], indices_2d[:, 1]
-    mask[rows, cols] = True
-    labeled, n_clusters = ndimage.label(mask, structure=np.ones((3, 3)))
-    labels = labeled[rows, cols]
-    return labels, n_clusters
+    n = len(cx)
+    tree = cKDTree(np.column_stack([cx, cy]))
+    k = min(7, n)
+    dists, _ = tree.query(np.column_stack([cx, cy]), k=k)
+    nn_dist = float(np.median(dists[:, 1])) if k > 1 else 0.0
+    return tree, nn_dist * 1.15
+
+
+def _hex_clusters(cx: np.ndarray, cy: np.ndarray, mask: np.ndarray):
+    """
+    Label contiguous clusters among the cells where `mask` is True, using
+    TRUE hexagon adjacency (neighbours within the calibrated hex pitch),
+    not an 8-neighbour rectangular-grid approximation.
+
+    Hexagon centres are not on a Cartesian lattice — adjacent rows are
+    offset by half a cell width — so quantising centres onto a rectangular
+    row/col index and applying 8-connectivity would not preserve true
+    hexagon adjacency. Building the adjacency graph directly from
+    inter-cell distances (this function) is exact for any hex tiling
+    (pointy-top, flat-top, or with irregular real-world cell placement)
+    and does not depend on axis alignment.
+
+    Returns an array of cluster labels (1-based, 0 = not in mask) aligned
+    with the input arrays, and the total number of clusters among masked
+    cells.
+    """
+    n = len(cx)
+    labels = np.zeros(n, dtype=int)
+    idx = np.where(mask)[0]
+    if len(idx) == 0:
+        return labels, 0
+
+    tree, radius = _hex_adjacency_radius(cx, cy)
+    # Adjacency among masked cells only: query each masked cell's true
+    # geometric neighbours and keep edges where both endpoints are masked.
+    pairs = tree.query_ball_point(np.column_stack([cx[idx], cy[idx]]), r=radius)
+    row_i, col_j = [], []
+    for local_i, neighbours in enumerate(pairs):
+        gi = idx[local_i]
+        for gj in neighbours:
+            if gj != gi and mask[gj]:
+                row_i.append(gi)
+                col_j.append(gj)
+
+    if row_i:
+        adj = coo_matrix(
+            (np.ones(len(row_i), dtype=bool), (row_i, col_j)), shape=(n, n)
+        )
+        n_clusters, comp_labels = connected_components(
+            adj, directed=False, connection="weak")
+    else:
+        # No edges at all (e.g. a single masked cell): each masked cell is
+        # its own singleton cluster.
+        comp_labels = np.arange(n)
+        n_clusters = n
+
+    # Relabel 1..k over masked cells only, in first-seen order (by position
+    # in the masked-cell array) for a stable, reproducible label numbering
+    # independent of connected_components' internal (arbitrary) label ids.
+    masked_comp_labels = comp_labels[idx]
+    unique_comps, first_seen_pos = np.unique(masked_comp_labels, return_index=True)
+    # unique_comps[i] first appears at position first_seen_pos[i] in
+    # masked_comp_labels; sorting by that position gives first-seen order.
+    order = np.argsort(first_seen_pos)
+    remap = {int(unique_comps[i]): rank + 1 for rank, i in enumerate(order)}
+    labels[idx] = [remap[int(c)] for c in masked_comp_labels]
+    return labels, len(unique_comps)
 
 
 # ---------------------------------------------------------------------------
@@ -145,8 +217,7 @@ def _process_city(args):
         return None
 
     try:
-        gdf = gpd.read_file(shps[0], columns=["GridID", "center_x", "center_y",
-                                                "Pop2022", "geometry"])
+        gdf = gpd.read_file(shps[0])  # need the LC_* columns for coverage below
         if gdf.empty:
             return None
 
@@ -154,11 +225,30 @@ def _process_city(args):
         cx  = gdf["center_x"].to_numpy(dtype=float)   # local projected CRS
         cy  = gdf["center_y"].to_numpy(dtype=float)
         pop_raw = gdf["Pop2022"].to_numpy(dtype=float)
-        valid_mask = np.isfinite(pop_raw) & (pop_raw > 0)
-        pop = np.where(valid_mask, pop_raw, 0.0)
+        pop = np.where(np.isfinite(pop_raw), pop_raw, 0.0)
 
-        n_cells                  = len(gdf)
-        n_valid_population_cells = int(valid_mask.sum())
+        n_cells = len(gdf)
+
+        # population_coverage: fraction of grid cells with ANY valid raster
+        # data, not the fraction with Pop2022 > 0. A cell can legitimately
+        # have zero population (water, bare ground, open space) while still
+        # being fully covered by the source rasters — Pop2022 == 0 alone
+        # cannot distinguish that from a true data gap (a cell the WorldPop
+        # / land-cover rasters never touched, e.g. near a country border or
+        # a raster mosaic seam). A real data gap is instead identifiable by
+        # its OTHER independently-sourced fields (all 23 LC_* land-cover
+        # fractions) also being exactly zero, whereas a cell with legitimate
+        # zero population still carries nonzero LC_Water / LC_Built / etc.
+        lc_cols = [c for c in gdf.columns if c.startswith("LC_")]
+        if lc_cols:
+            lc_sum = gdf[lc_cols].to_numpy(dtype=float).sum(axis=1)
+            has_raster_data = np.isfinite(lc_sum) & (lc_sum > 0)
+        else:
+            # No LC_* columns present in this SHP: fall back to the
+            # population-based proxy rather than fail outright.
+            has_raster_data = np.isfinite(pop_raw) & (pop_raw > 0)
+
+        n_valid_population_cells = int(has_raster_data.sum())
         population_coverage      = n_valid_population_cells / n_cells if n_cells > 0 else 0.0
         total_pop = pop.sum()
 
@@ -181,56 +271,30 @@ def _process_city(args):
         # ------------------------------------------------------------------
         # MAIN: primary population cluster centre
         # ------------------------------------------------------------------
-        # Step 1 — one-hop neighbour smoothing
-        # Build a GridID-based neighbour lookup from the SHP grid.
-        # For speed, use a 2-D raster approach: bin cells into a regular grid,
-        # apply a 3×3 mean filter, then look up smoothed values by cell index.
+        # Step 1 — one-hop neighbour smoothing, using TRUE hexagon adjacency
+        # (see _hex_adjacency_radius / _hex_clusters docstrings: hexagon
+        # centres are not on a Cartesian grid, so binning them into a
+        # rectangular row/col index and applying an 8-neighbour rectangular
+        # filter does not preserve hex adjacency).
+        tree, radius = _hex_adjacency_radius(cx, cy)
+        neighbour_lists = tree.query_ball_point(
+            np.column_stack([cx, cy]), r=radius)
 
-        # Estimate grid resolution from IQR of cell centre spacing
-        cx_sorted = np.sort(np.unique(np.round(cx, -1)))
-        if len(cx_sorted) > 1:
-            diffs = np.diff(cx_sorted)
-            res = float(np.median(diffs[diffs > 0]))
-        else:
-            res = 250.0  # fallback: 250 m hexagon grid
-
-        # Map cell centres to 2-D raster indices
-        x_min, y_min = cx.min(), cy.min()
-        col_idx = np.round((cx - x_min) / res).astype(int)
-        row_idx = np.round((cy - y_min) / res).astype(int)
-        n_rows  = row_idx.max() + 1
-        n_cols  = col_idx.max() + 1
-
-        pop_grid = np.zeros((n_rows, n_cols), dtype=float)
-        cnt_grid = np.zeros((n_rows, n_cols), dtype=int)
-        np.add.at(pop_grid, (row_idx, col_idx), pop)
-        np.add.at(cnt_grid, (row_idx, col_idx), 1)
-
-        # Uniform 3×3 mean filter for smoothing (only over occupied cells)
-        kernel     = np.ones((3, 3), dtype=float)
-        pop_smooth = ndimage.convolve(pop_grid, kernel, mode="constant", cval=0)
-        cnt_smooth = ndimage.convolve(cnt_grid.astype(float), kernel,
-                                      mode="constant", cval=0)
-        with np.errstate(invalid="ignore", divide="ignore"):
-            smooth_grid = np.where(cnt_smooth > 0,
-                                   pop_smooth / cnt_smooth, 0.0)
-
-        smooth_vals = smooth_grid[row_idx, col_idx]
+        pop_smooth = np.empty(n_cells, dtype=float)
+        for i, neighbours in enumerate(neighbour_lists):
+            # one-hop neighbourhood = self + true geometric neighbours
+            pop_smooth[i] = pop[neighbours].mean()
 
         # Step 2 — candidate cells: top max(10%, 10) by smoothed population
         n_candidates = max(int(np.ceil(MIN_CANDIDATE_FRAC * n_cells)),
                            MIN_CANDIDATE_ABS)
         n_candidates = min(n_candidates, n_cells)
-        threshold    = np.partition(smooth_vals, -n_candidates)[-n_candidates]
-        candidate    = smooth_vals >= threshold
+        threshold    = np.partition(pop_smooth, -n_candidates)[-n_candidates]
+        candidate    = pop_smooth >= threshold
 
-        cand_rows = row_idx[candidate]
-        cand_cols = col_idx[candidate]
-        cand_idx  = np.column_stack([cand_rows, cand_cols])
-
-        # Step 3 — Queen-adjacency clusters among candidate cells
-        cluster_labels, n_clusters = _queen_clusters(
-            cand_idx, shape=(n_rows, n_cols))
+        # Step 3 — contiguous clusters among candidate cells, TRUE hex adjacency
+        full_cluster_labels, n_clusters = _hex_clusters(cx, cy, candidate)
+        cluster_labels = full_cluster_labels[candidate]
 
         # Step 4 — primary cluster = highest total raw Pop2022
         cand_pop = pop[candidate]
@@ -247,10 +311,7 @@ def _process_city(args):
                                   if primary_cluster_pop > 0 else 0.0)
 
         # Step 5 — population-weighted centroid of primary cluster
-        # Map cluster labels (len = n_candidates) back to all-cell index array
-        full_labels = np.zeros(n_cells, dtype=int)
-        full_labels[candidate] = cluster_labels
-        in_primary = full_labels == primary_lbl
+        in_primary = full_cluster_labels == primary_lbl
 
         prim_cx, prim_cy = _weighted_centroid(cx[in_primary], cy[in_primary],
                                               pop[in_primary])

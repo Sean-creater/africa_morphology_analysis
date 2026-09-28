@@ -105,17 +105,25 @@ def _boot_worker(args):
 
 def continental_loess_ci(df, y_col, x_grid, n_boots, n_workers,
                          frac=LOESS_FRAC, cache_key=None):
-    """Return (y_hat, ci_lo, ci_hi) from country-cluster bootstrap LOESS."""
+    """Return (y_hat, ci_lo, ci_hi) from country-cluster bootstrap LOESS.
+
+    The cache (keyed by cache_key) is invalidated whenever METRICS' mtime
+    changes, so a regenerated city_metrics.parquet always triggers a fresh
+    bootstrap rather than silently reusing a CI computed from stale input.
+    """
     x   = df["log_pop"].values
     y   = df[y_col].values
     cty = df["country"].values
     y_hat = fit_loess(x, y, x_grid, frac=frac)
+    input_mtime = METRICS.stat().st_mtime
 
     if cache_key:
         cache_file = CACHE_DIR / f"{cache_key}.npz"
         if cache_file.exists():
             cached = np.load(cache_file)
-            return y_hat, cached["ci_lo"], cached["ci_hi"]
+            if float(cached.get("input_mtime", -1)) == input_mtime:
+                return y_hat, cached["ci_lo"], cached["ci_hi"]
+            logging.info("  Cache stale for %s (input changed), recomputing ...", cache_key)
 
     seeds = [int(sq.generate_state(1)[0])
              for sq in np.random.SeedSequence(42).spawn(n_boots)]
@@ -130,7 +138,7 @@ def continental_loess_ci(df, y_col, x_grid, n_boots, n_workers,
     ci_hi = np.percentile(preds, 97.5, axis=0)
 
     if cache_key:
-        np.savez(cache_file, ci_lo=ci_lo, ci_hi=ci_hi)
+        np.savez(cache_file, ci_lo=ci_lo, ci_hi=ci_hi, input_mtime=input_mtime)
         logging.info("  Cached: %s", cache_key)
 
     return y_hat, ci_lo, ci_hi
