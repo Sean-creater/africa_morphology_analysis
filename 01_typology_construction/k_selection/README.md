@@ -55,17 +55,15 @@ the full selection procedure.
 ## Usage
 
 ```bash
-PYTHON=/home/sjs96_file_share/anaconda3/envs/DL_env/bin/python3
-$PYTHON sampling/build_dendrogram_and_sample.py
+python sampling/build_dendrogram_and_sample.py
 
 # Authenticate Earth Engine once, interactively:
 python -c "import ee; ee.Authenticate()"
 
-PYTHON=/home/sjs96_file_share/anaconda3/envs/Africa_env/bin/python3
-$PYTHON imagery/generate_images.py --project YOUR_GEE_PROJECT_ID
+python imagery/generate_images.py --project YOUR_GEE_PROJECT_ID
 
 # Within-cluster correction pass:
-$PYTHON within_cluster/sample_within_pairs.py
+python within_cluster/sample_within_pairs.py
 bash within_cluster/run_generate_images.sh
 ```
 

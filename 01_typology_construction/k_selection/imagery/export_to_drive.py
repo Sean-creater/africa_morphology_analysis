@@ -5,19 +5,19 @@ Submits one GEE Export.image.toDrive() task per grid cell in split_pairs_k02_to_
 GEE processes all tasks in parallel in the cloud. When done, run download_from_drive.py.
 
 Usage:
-    PYTHON=/home/sjs96_file_share/anaconda3/envs/Africa_env/bin/python3
-    $PYTHON imagery/export_to_drive.py --project YOUR_GEE_PROJECT_ID
+    python imagery/export_to_drive.py --project YOUR_GEE_PROJECT_ID
 
     # Monitor task progress:
-    $PYTHON imagery/export_to_drive.py --project YOUR_GEE_PROJECT_ID --status
+    python imagery/export_to_drive.py --project YOUR_GEE_PROJECT_ID --status
 
     # After all tasks complete, download:
-    $PYTHON imagery/download_from_drive.py --project YOUR_GEE_PROJECT_ID
+    python imagery/download_from_drive.py --project YOUR_GEE_PROJECT_ID
 """
 
 import argparse
 import json
 import logging
+import os
 import sys
 import time
 from pathlib import Path
@@ -34,9 +34,13 @@ LOG_DIR   = ROOT / "logs"
 TASK_JSON = ROOT / "logs" / "export_tasks.json"  # maps grid_id → task id
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 
-FULL_GRID_ROOT = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix/data_cleaning_20260224/SHP_cleaned"
-)
+# SHP_cleaned geometry, produced by the companion africa_morphology_metrics
+# repository. Override with AFRICA_SHP_CLEANED_ROOT if your copy lives
+# elsewhere.
+FULL_GRID_ROOT = Path(os.environ.get(
+    "AFRICA_SHP_CLEANED_ROOT",
+    "../../../../africa_morphology_metrics/outputs/SHP_cleaned",
+))
 
 # GEE config — must match generate_images.py
 START_DATE      = "2024-01-01"

@@ -7,6 +7,7 @@ Edit the paths in this file to match your local data layout before running
 any of the analysis scripts.
 """
 
+import os
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -18,14 +19,17 @@ ROOT = Path(__file__).resolve().parent
 # INPUT PATHS  — edit these to match your data location
 # ---------------------------------------------------------------------------
 
-# Directory containing per-country sub-folders of per-city .npz embedding files.
-# Each .npz must contain:
+# Continent-scale embedding table (one row per GridID), published by the
+# companion africa_morphology_embedding repository as a release asset.
+# Must contain:
 #   embeddings : float32 array of shape (N, 256)
 #   grid_ids   : str array of shape (N,)
-EMBEDDINGS_DIR = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix"
-    "/data_cleaning_20260224/data_embeddings_20260513"
-)
+#   city, country : str arrays of shape (N,)
+# Override with AFRICA_EMBEDDINGS_PATH if your copy lives elsewhere.
+EMBEDDINGS_PATH = Path(os.environ.get(
+    "AFRICA_EMBEDDINGS_PATH",
+    "../../../africa_morphology_embedding/outputs/africa_embeddings.npz",
+))
 
 # Parquet table with cluster labels and morphometric features, produced by
 # ../cluster_interpretation/01_merge_data.py.

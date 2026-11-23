@@ -16,7 +16,12 @@ One summary figure:
     Annotates "N/47 countries with positive slope" for H* and r.
 
 outputs/tables/country_slopes.csv
-    OLS slope, intercept, R², n per country × outcome.
+    OLS slope, intercept, R², n, 95% CI and p-value (analytic, Student-t)
+    per country × outcome. The figures below remain purely descriptive
+    (one line per country, no uncertainty shown); the CI/p-value columns
+    let the table itself support country-level inference if needed,
+    without over-claiming precision that individual countries' small n
+    (as low as min_cities) doesn't support.
 
 Usage
 -----
@@ -104,10 +109,10 @@ REGION_ORDER = ["North Africa", "West Africa", "East Africa",
                 "Central Africa", "Southern Africa"]
 
 GROUP_NAMES = {
-    "p1": "G1 — Medium-density built-up",
-    "p2": "G2 — High-density compact",
-    "p3": "G3 — Sparse vegetated",
-    "p4": "G4 — Low-density heterogeneous",
+    "p1": "G1 (CFL) — Cropland-Fringe Low-Rise",
+    "p2": "G2 (HSF) — Heterogeneous Sparse Fabric",
+    "p3": "G3 (LVC) — Large-Volume Compact Fabric",
+    "p4": "G4 (DSB) — Dense Small-Building Fabric",
     "H_star": "Diversity H*",
     "r":      "Assortativity r",
 }
@@ -128,13 +133,26 @@ MM = 1 / 25.4
 # Helpers
 # ---------------------------------------------------------------------------
 def ols_slope(x: np.ndarray, y: np.ndarray):
-    """Return (slope, intercept, r2, n) from OLS; nan if insufficient data."""
+    """
+    Return (slope, intercept, r2, n, ci_lo, ci_hi, pval) from per-country
+    OLS; nan if insufficient data.
+
+    CI uses the analytic OLS standard error (Student-t, n-2 df) — plain,
+    unclustered, which is the right choice HERE specifically because each
+    call already IS one country's own within-country regression (there is
+    no further grouping structure left to cluster over, unlike the
+    continent-wide models in 06/07/08 which cluster by country because
+    they pool many countries together).
+    """
     mask = np.isfinite(x) & np.isfinite(y)
     n = mask.sum()
     if n < 5:
-        return np.nan, np.nan, np.nan, int(n)
+        return np.nan, np.nan, np.nan, int(n), np.nan, np.nan, np.nan
     res = stats.linregress(x[mask], y[mask])
-    return res.slope, res.intercept, res.rvalue ** 2, int(n)
+    t_crit = stats.t.ppf(0.975, df=n - 2)
+    ci_lo  = res.slope - t_crit * res.stderr
+    ci_hi  = res.slope + t_crit * res.stderr
+    return res.slope, res.intercept, res.rvalue ** 2, int(n), ci_lo, ci_hi, res.pvalue
 
 
 def fit_continental_gam(df: pd.DataFrame, y_col: str, x_grid: np.ndarray):
@@ -323,7 +341,7 @@ def main(min_cities: int = 10):
     records = []
     for country, grp in df.groupby("country"):
         for y_col in outcomes:
-            sl, ic, r2, n = ols_slope(
+            sl, ic, r2, n, ci_lo, ci_hi, pval = ols_slope(
                 grp["log_pop"].values, grp[y_col].values
             )
             records.append({
@@ -333,6 +351,9 @@ def main(min_cities: int = 10):
                 "intercept": ic,
                 "r2":        r2,
                 "n":         n,
+                "ci_lo":     ci_lo,
+                "ci_hi":     ci_hi,
+                "pval":      pval,
                 "region":    MACRO_REGION.get(country, "Unknown"),
             })
 

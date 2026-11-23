@@ -1,5 +1,5 @@
 """
-verify_knn_graph_row_order_invariance.py
+check_knn_graph_row_order_invariance.py
 =========================================
 One-off robustness check for the symmetric k-NN graph construction in
 02_leiden_communities.py: confirms that the graph itself — not just the
@@ -30,7 +30,7 @@ Method
 
 Usage
 -----
-    python verify_knn_graph_row_order_invariance.py
+    python check_knn_graph_row_order_invariance.py
 """
 import logging
 from pathlib import Path

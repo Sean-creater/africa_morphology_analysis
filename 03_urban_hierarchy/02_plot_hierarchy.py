@@ -9,7 +9,6 @@ Output
 
     Single axes: four morphological group shares (p1–p4) vs log(population).
     LOESS smooth + 95% country-cluster bootstrap CI per group.
-    Curve crossings marked with light dashed vertical lines.
 
 Usage
 -----
@@ -26,6 +25,7 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -37,11 +37,19 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+# Register a font whose internal name is "Arial" (see other scripts in
+# this project) so matplotlib doesn't silently fall back to DejaVu Sans.
+_FONT_DIR = Path("/home/sjs96_file_share/Scripts4Analysis/_fonts")
+if _FONT_DIR.is_dir():
+    for _f in fm.findSystemFonts(fontpaths=[str(_FONT_DIR)]):
+        fm.fontManager.addfont(_f)
+else:
+    logging.warning("Font directory not found (%s); falling back to default sans-serif.", _FONT_DIR)
+
 matplotlib.rcParams.update({
-    "font.family":     "sans-serif",
-    "font.sans-serif": ["Liberation Sans", "DejaVu Sans"],
-    "pdf.fonttype":    42,
-    "ps.fonttype":     42,
+    "font.family":     "Arial",
+    "font.size":       10,
+    "svg.fonttype": "none",
 })
 
 ROOT      = Path(__file__).resolve().parent
@@ -54,21 +62,36 @@ CACHE_DIR.mkdir(parents=True, exist_ok=True)
 MM = 1 / 25.4
 
 GROUP_NAMES = {
-    1: "Medium-density built-up",
-    2: "High-density compact",
-    3: "Sparse vegetated",
-    4: "Low-density heterogeneous",
+    1: "Cropland-Fringe Low-Rise",
+    2: "Heterogeneous Sparse Fabric",
+    3: "Large-Volume Compact Fabric",
+    4: "Dense Small-Building Fabric",
 }
+# Same 4-group colour mapping as cluster_profiles_heatmap.svg's
+# GROUP4_COLORS (01_typology_construction/cluster_interpretation/
+# 04_cluster_profiles.py) — verified the group NUMBERING corresponds
+# exactly (fcluster on the same D_cj matrix, cut at k=4, reproduces
+# group 1={4,5}, 2={1,3,6,7,8}, 3={12,13}, 4={2,9,10,11,14,15,16,17},
+# matching this module's GROUP_MAP), so group 1-4 here really is the
+# same grouping as there, not just a coincidentally-same-sized partition.
 GROUP_COLORS = {
-    1: "#714F91",   # purple
-    2: "#E4391B",   # red
-    3: "#F9992A",   # amber
-    4: "#739CCD",   # sky blue
+    1: "#8DA0CB",
+    2: "#FC8D62",
+    3: "#66C2A5",
+    4: "#E78AC3",
 }
 
 LOESS_FRAC        = 0.35
 N_BOOTS_DEFAULT   = 500
 N_WORKERS_DEFAULT = 14
+
+# Composition-share breakpoint (09a_group_share_breakpoint.py): the slope
+# "knee" of p1 (flattening), p2 (peak/zero-crossing), and p4 (flattening)
+# cluster tightly around pop ~20k (p3's "starts rising" knee trails at
+# ~36k but p3's total movement is small, so it's a lagged tail of the
+# same transition, not a separate break) — found directly on these same
+# curves, not on a derived index like H17/r17.
+BREAK_POP = 20_000
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +168,7 @@ def _despine(ax):
     for sp in ["left", "bottom"]:
         ax.spines[sp].set_color("#AAAAAA")
         ax.spines[sp].set_linewidth(0.6)
-    ax.tick_params(colors="#555555", labelsize=7)
+    ax.tick_params(colors="#555555", labelsize=9)
     ax.xaxis.label.set_color("#555555")
     ax.yaxis.label.set_color("#555555")
 
@@ -161,7 +184,7 @@ def plot_hierarchy(df, n_boots, n_workers):
     fig, ax = plt.subplots(figsize=(130 * MM, 100 * MM))
     fig.patch.set_facecolor("white")
 
-    curves_hat = {}
+    y_band_lo, y_band_hi = [], []
     for g in range(1, 5):
         y_col = f"p{g}"
         col   = GROUP_COLORS[g]
@@ -169,35 +192,38 @@ def plot_hierarchy(df, n_boots, n_workers):
         logging.info("  LOESS + CI: group %d ...", g)
         y_hat, lo, hi = _loess_ci(df, y_col, x_grid,
                                    n_boots=n_boots, n_workers=n_workers)
-        curves_hat[g] = y_hat
+        y_band_lo.append(np.nanmin(lo))
+        y_band_hi.append(np.nanmax(hi))
         ax.fill_between(x_grid, lo, hi, color=col, alpha=0.18, linewidth=0, zorder=2)
         ax.plot(x_grid, y_hat, color=col, lw=1.4, label=label, zorder=3)
 
-    # Curve crossings: light dashed vlines
-    for ga, gb in [(1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)]:
-        diff = curves_hat[ga] - curves_hat[gb]
-        for idx in np.where(np.diff(np.sign(diff)))[0]:
-            x0, x1 = x_grid[idx], x_grid[idx + 1]
-            d0, d1 = diff[idx], diff[idx + 1]
-            x_cross = x0 - d0 * (x1 - x0) / (d1 - d0)
-            ax.axvline(x_cross, color="#CCCCCC", lw=0.6, ls="--", zorder=1, alpha=0.7)
-
     ax.set_xlim(x_lo - 0.1, x_hi + 0.1)
-    ax.set_ylim(-0.02, 0.52)
-    ax.set_xlabel("log(population)", fontsize=8)
-    ax.set_ylabel("Group share", fontsize=8)
+    # Y-range fit to the actual data (CI bands), not hardcoded — a fixed
+    # ceiling tuned for one grouping silently clips curves/CIs under a
+    # different grouping (e.g. a group whose LOESS share legitimately
+    # exceeds that ceiling at the low- or high-population end).
+    y_min = max(-0.02, min(y_band_lo) - 0.02)
+    y_max = min(1.02, max(y_band_hi) + 0.02)
+    ax.set_ylim(y_min, y_max)
+
+    log_break = np.log(BREAK_POP)
+    ax.axvline(log_break, color="#555555", lw=0.9, ls="--", zorder=4)
+    ax.text(log_break + 0.08, y_max - 0.03, f"~{BREAK_POP:,}",
+           fontsize=7.5, color="#555555", va="top", ha="left")
+    ax.set_xlabel("log(population)", fontsize=10)
+    ax.set_ylabel("Group share", fontsize=10)
     ax.xaxis.set_major_locator(plt.MultipleLocator(1.0))
     ax.xaxis.set_minor_locator(plt.MultipleLocator(0.1))
     ax.yaxis.set_major_locator(plt.MultipleLocator(0.1))
     ax.yaxis.set_minor_locator(plt.MultipleLocator(0.05))
-    ax.tick_params(which="major", labelsize=7, length=4)
+    ax.tick_params(which="major", labelsize=9, length=4)
     ax.tick_params(which="minor", length=2, labelbottom=False, labelleft=False)
-    ax.legend(fontsize=6, frameon=False, loc="upper right",
+    ax.legend(fontsize=8, frameon=False, loc="upper right",
               ncol=1, handlelength=1.5, handletextpad=0.5)
     _despine(ax)
 
     fig.tight_layout()
-    for ext in ("pdf", "png"):
+    for ext in ("svg", "png"):
         fig.savefig(FIG_DIR / f"urban_hierarchy.{ext}",
                     dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)

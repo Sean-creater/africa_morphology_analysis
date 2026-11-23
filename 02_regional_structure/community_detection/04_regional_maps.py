@@ -32,6 +32,7 @@ Usage
 """
 
 import logging
+import os
 from pathlib import Path
 
 import geopandas as gpd
@@ -39,8 +40,39 @@ import matplotlib as mpl
 import matplotlib.patheffects
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+from matplotlib.path import Path as MplPath
+from matplotlib.patches import PathPatch
 import numpy as np
 import pandas as pd
+
+
+def _polygon_to_mpl_path(geom) -> MplPath:
+    """
+    Build a matplotlib Path with an explicit MOVETO at the start of every
+    ring (exterior + holes, and every part of a MultiPolygon).
+
+    geopandas' batched GeoDataFrame.plot() draws the whole boundary layer
+    as one PathCollection; when serialised to SVG, the break between two
+    unrelated rings (e.g. mainland Africa's coastline and Madagascar's, or
+    two different countries) can be silently dropped, leaving a LINETO
+    where a MOVETO belongs. matplotlib/most browsers still render this
+    correctly by luck, but Adobe Illustrator's SVG importer does not: it
+    draws a stray straight line connecting the end of one ring to the
+    start of the next, visible as long diagonal/horizontal artifacts
+    crossing empty ocean. Building the Path explicitly, ring by ring,
+    avoids relying on that shared code path entirely.
+    """
+    polys = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
+    vertices, codes = [], []
+    for poly in polys:
+        for ring in [poly.exterior, *poly.interiors]:
+            coords = list(ring.coords)
+            vertices.extend(coords)
+            codes.append(MplPath.MOVETO)
+            codes.extend([MplPath.LINETO] * (len(coords) - 2))
+            codes.append(MplPath.CLOSEPOLY)
+    return MplPath(vertices, codes)
+
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -54,8 +86,13 @@ OUT_FIG   = ROOT / "outputs" / "figures"
 OUT_FIG.mkdir(parents=True, exist_ok=True)
 
 PLOT_DATA  = ROOT / "outputs" / "plot_data.parquet"
-BOUNDARY   = Path("/home/sjs96_file_share/TIF_Grid_workflow/"
-                  "Workflow_Xinghan/MyData/00_boundaries/africa_boundaries.shp")
+# African country boundary polygons (e.g. derived from Africapolis/GADM
+# administrative boundaries). Override with AFRICA_BOUNDARY_SHP to point
+# at your own copy.
+BOUNDARY   = Path(os.environ.get(
+    "AFRICA_BOUNDARY_SHP",
+    "/path/to/africa_boundaries.shp",
+))
 
 # ---------------------------------------------------------------------------
 # Visual parameters — kept identical to 03_visualize_communities.py
@@ -127,16 +164,19 @@ def mm_to_in(mm): return mm / 25.4
 # ---------------------------------------------------------------------------
 def main():
     mpl.rcParams.update({
-        "font.family":     "sans-serif",
-        "font.sans-serif": ["Helvetica", "Arial", "DejaVu Sans"],
-        "font.size":       7,
+        "font.family":     "Arial",
+        "font.size":       8,
         "axes.linewidth":  0.5,
-        "pdf.fonttype":    42,
-        "ps.fonttype":     42,
+        "svg.fonttype": "none",
     })
 
     df     = pd.read_parquet(PLOT_DATA)
     africa = gpd.read_file(BOUNDARY).to_crs("EPSG:4326")
+    # Simplify: the source boundary layer has ~2.3M vertices total, far more
+    # detail than visible even at these zoomed-in regional scales, and the
+    # main reason the SVG was too heavy for Illustrator to open. A finer
+    # tolerance than the continental map (these views are more zoomed in).
+    africa["geometry"] = africa.geometry.simplify(0.005, preserve_topology=True)
 
     # Global arrays
     lon_all  = df["longitude"].values
@@ -187,9 +227,33 @@ def main():
                  fontsize=8, fontweight="bold",
                  fontfamily="Arial")
 
-        # Backdrop
-        africa.plot(ax=ax, facecolor=LAND_COLOR, edgecolor=BORDER_COLOR,
-                    linewidth=BORDER_LW, zorder=1)
+        # Backdrop — one PathPatch per country, each built ring-by-ring with
+        # an explicit MOVETO (see _polygon_to_mpl_path), instead of a single
+        # batched africa.plot() call whose merged PathCollection can lose
+        # ring breaks when serialised to SVG (stray straight lines
+        # connecting unrelated rings).
+        #
+        # Fill and stroke in TWO separate passes (all fills, then all
+        # borders on top): neighbouring countries share near-identical
+        # boundary coordinates, so with a single facecolor+edgecolor patch
+        # per country, a later country's opaque fill can sit exactly on
+        # top of an earlier country's border stroke along their shared
+        # edge. Browsers' anti-aliasing often leaves a faint seam there by
+        # chance, but Illustrator's precise vector rendering does not — the
+        # shared border vanishes completely. Drawing every stroke after
+        # all fills guarantees no fill can ever cover a border.
+        geoms = list(africa.geometry)
+        for geom in geoms:
+            ax.add_patch(PathPatch(
+                _polygon_to_mpl_path(geom),
+                facecolor=LAND_COLOR, edgecolor="none", linewidth=0, zorder=1,
+            ))
+        for geom in geoms:
+            ax.add_patch(PathPatch(
+                _polygon_to_mpl_path(geom),
+                facecolor="none", edgecolor=BORDER_COLOR,
+                linewidth=BORDER_LW, zorder=2,
+            ))
 
         # Points
         order = np.argsort(sz)
@@ -223,7 +287,7 @@ def main():
                             linewidth=1.5, foreground="white")])
 
         # Save
-        for fmt in ("pdf", "png"):
+        for fmt in ("svg", "png"):
             p = OUT_FIG / f"regional_{tag}.{fmt}"
             fig.savefig(p, dpi=DPI, bbox_inches="tight")
             logging.info("Saved → %s", p)

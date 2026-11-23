@@ -37,22 +37,19 @@ import matplotlib.colors as mcolors
 from shapely.geometry import Point as ShpPoint, MultiPoint, box
 from shapely.ops import unary_union
 from pathlib import Path
-from datetime import date
+
 
 matplotlib.rcParams.update({
-    "font.family":      "sans-serif",
-    "font.sans-serif":  ["Helvetica Neue", "Arial", "DejaVu Sans"],
-    "font.size":        9,
+    "font.family":      "Arial",
+    "font.size":        8,
     "axes.linewidth":   0.6,
-    "pdf.fonttype":     42,
-    "ps.fonttype":      42,
+    "svg.fonttype": "none",
 })
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 ROOT       = Path(__file__).parent
 OUT_TABLES = ROOT / "outputs" / "tables"
-FIG_DATE   = date.today().strftime("%Y-%m-%d")
-OUT_FIG    = ROOT / "outputs" / "figures" / FIG_DATE
+OUT_FIG    = ROOT / "outputs" / "figures"
 OUT_FIG.mkdir(parents=True, exist_ok=True)
 
 # ── Colour scheme (shared with 11_accra_rings_viz.py) ─────────────────────
@@ -389,7 +386,7 @@ fig.text(0.02, title_y,
          fontsize=12, fontweight="bold", va="bottom", ha="left")
 
 # ── Save ───────────────────────────────────────────────────────────────────
-for fmt, dpi in [("pdf", None), ("png", 300)]:
+for fmt, dpi in [("svg", None), ("png", 300)]:
     p = OUT_FIG / f"tier_rings_comparison.{fmt}"
     kw = {"dpi": dpi} if dpi else {}
     fig.savefig(p, bbox_inches="tight", **kw)

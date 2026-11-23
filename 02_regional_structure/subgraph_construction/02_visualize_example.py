@@ -18,9 +18,13 @@ Usage:
 import argparse
 import pickle
 import logging
+import os
 from pathlib import Path
 
 import geopandas as gpd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.collections import LineCollection
@@ -32,9 +36,36 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s  %(levelname)-8s  %(message)s",
                     datefmt="%H:%M:%S")
 
+# Register a font whose internal name is "Arial" so matplotlib's mathtext
+# engine (which resolves mathtext.rm/it/bf by actually looking up a font,
+# unlike plain text under svg.fonttype=none) can find one — otherwise it
+# silently falls back to DejaVu Sans for equation glyphs in the SVG output.
+_FONT_DIR = Path("/home/sjs96_file_share/Scripts4Analysis/_fonts")
+if _FONT_DIR.is_dir():
+    for _f in fm.findSystemFonts(fontpaths=[str(_FONT_DIR)]):
+        fm.fontManager.addfont(_f)
+else:
+    logging.warning("Font directory not found (%s); falling back to default sans-serif.", _FONT_DIR)
+
+matplotlib.rcParams.update({
+    "font.family":  "Arial",
+    "font.size":    8,
+    "svg.fonttype": "none",
+    "mathtext.fontset": "custom",
+    "mathtext.rm":       "Arial",
+    "mathtext.it":       "Arial:italic",
+    "mathtext.bf":       "Arial:bold",
+})
+
 ROOT        = Path(__file__).parent
-SHP_ROOT    = Path("/home/sjs96_file_share/Momepy_workflow/Metrix/"
-                   "data_cleaning_20260224/SHP_cleaned")
+# SHP geometry + attributes per city, published by the companion
+# africa_morphology_metrics repository (cleaning stage output,
+# "SHP_cleaned"). Override with AFRICA_SHP_CLEANED_ROOT if your
+# copy lives elsewhere.
+SHP_ROOT    = Path(os.environ.get(
+    "AFRICA_SHP_CLEANED_ROOT",
+    "../../../africa_morphology_metrics/outputs/SHP_cleaned",
+))
 LABELS_PATH = (ROOT.parent.parent / "01_typology_construction" / "typology_construction"
                / "outputs" / "clusters" / "grid_type_labels.csv")
 CACHE_DIR   = ROOT / "outputs" / "cache"
@@ -63,7 +94,12 @@ PALETTE_17 = [
 ]
 TYPE_COLORS = {i + 1: PALETTE_17[i] for i in range(17)}
 
-N_SEG = 120   # gradient segments per edge (higher = smoother, fewer artefacts)
+N_SEG = 20    # gradient segments per edge (higher = smoother, fewer artefacts)
+# Each segment becomes its own <path> in SVG (LineCollection can't merge
+# differently-coloured segments into one path) — with up to C(17,2)=136
+# edges, 120 segments/edge produced ~14k paths, far too many vector objects
+# for Illustrator to load interactively. 20 segments is still a visually
+# smooth gradient at this line width, at ~6x fewer path elements.
 
 
 def hex_to_rgb(h: str) -> np.ndarray:
@@ -111,8 +147,13 @@ def _pick_focal(gdf, w_queen):
 
 def plot_cell_map(ax, gdf: gpd.GeoDataFrame, city: str, focal_idx: int = 0):
     gdf["color"] = gdf["label_k17"].map(TYPE_COLORS)
+    # rasterized=True: a city can have tens of thousands of hex cells, each
+    # its own vector path — fully vectorising this one dense panel makes the
+    # SVG far too heavy for Adobe Illustrator to open/edit interactively
+    # (object count, not file size, is what stalls it). Everything else in
+    # this figure (titles, legend, the type-interaction graph) stays vector.
     gdf.plot(ax=ax, color=gdf["color"].tolist(), linewidth=0,
-             edgecolor="none")
+             edgecolor="none", rasterized=True)
     # Highlight the focal cell and draw a zoom rectangle around it
     focal_geom = gdf.iloc[focal_idx].geometry
     gdf.iloc[[focal_idx]].plot(ax=ax, color="none",
@@ -127,6 +168,30 @@ def plot_cell_map(ax, gdf: gpd.GeoDataFrame, city: str, focal_idx: int = 0):
     ax.add_patch(rect)
     ax.set_title(f"{city} — spatial layout", fontsize=11)
     ax.axis("off")
+
+    # --- Scale bar ---
+    # The source SHP is in a UTM projection (metres), so 1 data unit = 1 m
+    # exactly here — no lat/lon approximation needed. Anchor point fixed in
+    # axes-fraction (bottom-left, inside the plotted extent) so it lands in
+    # the same relative spot regardless of this city's actual footprint
+    # size/shape; bar length is then a real, exact distance in metres.
+    bar_len_m = 10_000  # 10 km, round number
+    tick_h_frac = 0.012
+    inv = ax.transData.inverted()
+    x0, y0 = inv.transform(ax.transAxes.transform((0.04, 0.06)))
+    x1 = x0 + bar_len_m
+    xr0, yr0 = inv.transform(ax.transAxes.transform((0, 0)))
+    xr1, yr1 = inv.transform(ax.transAxes.transform((1, 1)))
+    tick_h = tick_h_frac * (yr1 - yr0)
+    ax.plot([x0, x1], [y0, y0], color="#222222", linewidth=1.0,
+            solid_capstyle="butt", zorder=11, clip_on=False)
+    for x in (x0, x1):
+        ax.plot([x, x], [y0 - tick_h / 2, y0 + tick_h / 2],
+                color="#222222", linewidth=1.0, zorder=11, clip_on=False)
+    ax.text((x0 + x1) / 2, y0 + tick_h / 2 + 0.01 * (yr1 - yr0),
+            f"{bar_len_m // 1000} km", ha="center", va="bottom",
+            fontsize=6, fontfamily="Arial", color="#222222",
+            zorder=11, clip_on=False)
 
 
 def plot_adjacency_schematic(ax, gdf: gpd.GeoDataFrame, focal_idx: int = 0):
@@ -310,7 +375,7 @@ def plot_type_graph(ax, G_type: nx.Graph, city: str):
     # A_ij mapped linearly from [-max_reg, +max_reg] → [min_w, max_w].
     # Negative A (spatial avoidance) → thin & faint; positive → thick & opaque.
     # Single channel, no dashes, no extra dimensions.
-    W_MIN, W_MAX = 0.4, 6.0
+    W_MIN, W_MAX = 0.2, 3.0
     A_MIN, A_MAX = 0.18, 0.90
     for u, v in regular:
         w   = w_attr.get((u, v), w_attr.get((v, u), 0.0))
@@ -364,8 +429,8 @@ def plot_type_graph(ax, G_type: nx.Graph, city: str):
     ax.set_aspect("equal")
     ax.set_title(
         f"{city} — morphological type interaction graph\n"
-        "node size ∝ type share  ·  "
-        "edge & loop width/opacity ∝ log-enrichment A$_{ij}$  "
+        "node size = type share  ·  "
+        "edge & loop width/opacity = log-enrichment A$_{ij}$  "
         "(thick = co-occur, thin = avoid)",
         fontsize=9)
     ax.axis("off")
@@ -387,7 +452,12 @@ def main():
     G_type = load_graph(args.country, args.city, "type")
     gdf    = load_gdf(args.country, args.city, labels)
 
-    fig, axes = plt.subplots(1, 3, figsize=(26, 9),
+    # figsize halved (26,9) -> (13,4.5); fontsize=... is in points (an
+    # absolute physical unit, independent of figsize), so every existing
+    # fontsize= call below keeps the same absolute size on the page while
+    # the canvas itself shrinks 2x — text ends up proportionally larger
+    # relative to the smaller figure, as requested.
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4.5),
                               gridspec_kw={"width_ratios": [1, 2.2, 2.5]})
     fig.suptitle(f"{args.city}, {args.country} — urban morphological type subgraph",
                  fontsize=13)
@@ -400,10 +470,26 @@ def main():
     plot_cell_map  (axes[1], gdf, args.city, focal_idx)
     plot_type_graph(axes[2], G_type, args.city)
 
+    # --- Shared 17-type colour legend (applies to all 3 panels: the same
+    # TYPE_COLORS mapping colours the schematic hexagons, the spatial
+    # layout, and the graph nodes) ---
+    legend_handles = [
+        mpatches.Patch(facecolor=TYPE_COLORS[t], edgecolor="#333333",
+                       linewidth=0.4, label=f"Type {t}")
+        for t in range(1, 18)
+    ]
+    fig.legend(
+        handles=legend_handles, loc="lower center", ncol=17,
+        bbox_to_anchor=(0.5, -0.02), frameon=False,
+        fontsize=6, handlelength=1.0, handleheight=1.0,
+        columnspacing=0.8, handletextpad=0.4,
+    )
+
     fig.tight_layout()
-    out         = FIG_DIR / f"{args.country}_{args.city}_subgraph_viz.pdf"
+    safe_city   = args.city.replace(" ", "_")
+    out         = FIG_DIR / f"{args.country}_{safe_city}_subgraph_viz.svg"
     out_png     = out.with_suffix(".png")
-    out_png_tr  = FIG_DIR / f"{args.country}_{args.city}_subgraph_viz_transparent.png"
+    out_png_tr  = FIG_DIR / f"{args.country}_{safe_city}_subgraph_viz_transparent.png"
     fig.savefig(out,        dpi=200, bbox_inches="tight")
     fig.savefig(out_png,    dpi=200, bbox_inches="tight")
     fig.savefig(out_png_tr, dpi=200, bbox_inches="tight", transparent=True)

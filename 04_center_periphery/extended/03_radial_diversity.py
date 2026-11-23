@@ -78,8 +78,10 @@ def _H17_raw(labels: np.ndarray) -> float:
 
 
 def _cluster_boot_ci(values: np.ndarray, groups: np.ndarray,
-                     B: int = N_BOOT, alpha: float = 0.10) -> tuple:
-    """Country-cluster bootstrap CI for the mean."""
+                     B: int = N_BOOT, alpha: float = 0.05) -> tuple:
+    """Country-cluster bootstrap CI for the mean (default 95% — was
+    previously alpha=0.10 i.e. a 90% interval, inconsistent with every
+    other CI in this project)."""
     uniq_g = np.unique(groups)
     means  = []
     rng    = np.random.default_rng(42)

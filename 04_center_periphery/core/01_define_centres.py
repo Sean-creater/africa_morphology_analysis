@@ -74,6 +74,7 @@ Notes
 
 import argparse
 import logging
+import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
@@ -92,8 +93,14 @@ logging.basicConfig(
 )
 
 ROOT     = Path(__file__).resolve().parent
-SHP_ROOT = Path("/home/sjs96_file_share/Momepy_workflow/Metrix/"
-                "data_cleaning_20260224/SHP_cleaned")
+# SHP geometry + attributes per city, published by the companion
+# africa_morphology_metrics repository (cleaning stage output,
+# "SHP_cleaned"). Override with AFRICA_SHP_CLEANED_ROOT if your
+# copy lives elsewhere.
+SHP_ROOT = Path(os.environ.get(
+    "AFRICA_SHP_CLEANED_ROOT",
+    "../../../africa_morphology_metrics/outputs/SHP_cleaned",
+))
 OUT_DIR  = ROOT / "outputs" / "tables"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -290,7 +297,16 @@ def _process_city(args):
                            MIN_CANDIDATE_ABS)
         n_candidates = min(n_candidates, n_cells)
         threshold    = np.partition(pop_smooth, -n_candidates)[-n_candidates]
+        # NOTE (methods review): `candidate` selects ALL cells >= threshold,
+        # not exactly the top n_candidates -- when many cells share the
+        # threshold value (common for low-population cities where
+        # pop_smooth has many exact ties, e.g. several all-zero
+        # neighbourhoods), the actual candidate count can run well above
+        # the intended ~10%. n_candidates_actual / candidate_ties_flag
+        # below are diagnostic-only and don't change this behaviour.
         candidate    = pop_smooth >= threshold
+        n_candidates_actual = int(candidate.sum())
+        candidate_ties_flag = n_candidates_actual > int(1.5 * n_candidates)
 
         # Step 3 — contiguous clusters among candidate cells, TRUE hex adjacency
         full_cluster_labels, n_clusters = _hex_clusters(cx, cy, candidate)
@@ -368,6 +384,13 @@ def _process_city(args):
                                       if total_pop > 0 else np.nan),
             "secondary_cluster_pop": secondary_cluster_pop,
             "secondary_to_primary":  secondary_to_primary,
+
+            # Candidate-selection diagnostics (methods review): flags
+            # cities where ties in smoothed population inflated the
+            # candidate set well past the intended ~10% (n_candidates).
+            "n_candidates":          n_candidates,
+            "n_candidates_actual":   n_candidates_actual,
+            "candidate_ties_flag":   candidate_ties_flag,
 
             # Shape
             "compactness": compactness,

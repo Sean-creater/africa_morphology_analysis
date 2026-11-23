@@ -7,16 +7,16 @@ Downloads completed GEE exports from Google Drive, then renders each cell
 Run after export_to_drive.py tasks are COMPLETED.
 
 Usage:
-    PYTHON=/home/sjs96_file_share/anaconda3/envs/Africa_env/bin/python3
-    $PYTHON imagery/download_from_drive.py --project YOUR_GEE_PROJECT_ID
+    python imagery/download_from_drive.py --project YOUR_GEE_PROJECT_ID
 
     # Only download GeoTIFFs without rendering (for debugging):
-    $PYTHON imagery/download_from_drive.py --project YOUR_GEE_PROJECT_ID --tiff-only
+    python imagery/download_from_drive.py --project YOUR_GEE_PROJECT_ID --tiff-only
 """
 
 import argparse
 import json
 import logging
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -36,20 +36,28 @@ TIFF_CACHE = ROOT / "outputs" / "tiff_cache"   # downloaded GeoTIFFs
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 TIFF_CACHE.mkdir(parents=True, exist_ok=True)
 
-# Path to a checked-out copy of the companion africa_morphology_imagery
-# repository (https://github.com/Sean-creater/africa_morphology_imagery).
-AFRICA_MORPHOLOGY_IMAGERY = Path(
-    "/path/to/africa_morphology_imagery/africa_morphology_imagery"
-)
+# Checked-out copy of the companion africa_morphology_imagery repository
+# (https://github.com/Sean-creater/africa_morphology_imagery). Override
+# with AFRICA_MORPHOLOGY_IMAGERY_ROOT if your copy lives elsewhere.
+AFRICA_MORPHOLOGY_IMAGERY = Path(os.environ.get(
+    "AFRICA_MORPHOLOGY_IMAGERY_ROOT",
+    "../../../../africa_morphology_imagery/africa_morphology_imagery",
+))
 sys.path.insert(0, str(AFRICA_MORPHOLOGY_IMAGERY))
 from render import render_integrated, clip_to_cell  # noqa: E402
 
-FULL_GRID_ROOT = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix/data_cleaning_20260224/SHP_cleaned"
-)
-MOMEPY_DATA_ROOT = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix/data"
-)
+# SHP_cleaned geometry and the per-city building/road-network intermediates,
+# both produced by the companion africa_morphology_metrics repository.
+# Override with AFRICA_SHP_CLEANED_ROOT / AFRICA_MORPHOLOGY_METRICS_DATA_ROOT
+# if your copy lives elsewhere.
+FULL_GRID_ROOT = Path(os.environ.get(
+    "AFRICA_SHP_CLEANED_ROOT",
+    "../../../../africa_morphology_metrics/outputs/SHP_cleaned",
+))
+MOMEPY_DATA_ROOT = Path(os.environ.get(
+    "AFRICA_MORPHOLOGY_METRICS_DATA_ROOT",
+    "../../../../africa_morphology_metrics/data",
+))
 
 logging.basicConfig(
     level=logging.INFO,

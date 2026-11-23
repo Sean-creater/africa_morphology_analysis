@@ -42,22 +42,42 @@ import pandas as pd
 import scipy.stats as stats
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.ticker as mticker
 from matplotlib.gridspec import GridSpec, GridSpecFromSubplotSpec
 from pathlib import Path
-from datetime import date
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from _regional_effect_shared import regional_effect_by_bin
 
+# Register a font whose internal name is "Arial" so matplotlib's mathtext
+# engine (which resolves mathtext.rm/it/bf by actually looking up a font,
+# unlike plain text under svg.fonttype=none) can find one — otherwise it
+# silently falls back to DejaVu Sans for equation glyphs in the SVG output.
+_FONT_DIR = Path("/home/sjs96_file_share/Scripts4Analysis/_fonts")
+if _FONT_DIR.is_dir():
+    for _f in fm.findSystemFonts(fontpaths=[str(_FONT_DIR)]):
+        fm.fontManager.addfont(_f)
+else:
+    print(f"Font directory not found ({_FONT_DIR}); falling back to default sans-serif.")
+
+matplotlib.rcParams.update({
+    "font.family":  "Arial",
+    "font.size":    8,
+    "svg.fonttype": "none",
+    "mathtext.fontset": "custom",
+    "mathtext.rm":       "Arial",
+    "mathtext.it":       "Arial:italic",
+    "mathtext.bf":       "Arial:bold",
+})
+
 ROOT       = Path(__file__).parent
 OUT_TABLES = ROOT / "outputs" / "tables"
 ROBUST_DIR = OUT_TABLES / "robustness"
-FIG_DATE   = date.today().strftime("%Y-%m-%d")
-OUT_FIG    = ROOT / "outputs" / "figures" / FIG_DATE
+OUT_FIG    = ROOT / "outputs" / "figures"
 OUT_FIG.mkdir(parents=True, exist_ok=True)
 
 CM_PATH    = ROOT.parent.parent / "03_urban_hierarchy" / "outputs" / "tables" / "city_metrics.parquet"
@@ -100,21 +120,23 @@ ZONE_ALPHA_CORE = 0.06
 ZONE_ALPHA_MID  = 0.035
 
 # ── Morphological family definitions (from 01_compute_city_metrics.py) ────
-# Family 1 — Medium-density built-up fabric : types 2,9,10,11,16,17
-# Family 2 — High-density compact urban     : types 12,13,14,15
-# Family 3 — Sparse low-built vegetated     : types 4,5
-# Family 4 — Low-density heterogeneous      : types 1,3,6,7,8
+# Data-driven Ward k=4 cut of the 17x91 cluster-profile matrix — see
+# 01_typology_construction/cluster_interpretation/04_cluster_profiles.py.
+# Family 1 — Cropland-Fringe Low-Rise (CFL)    : types 4,5
+# Family 2 — Heterogeneous Sparse Fabric (HSF) : types 1,3,6,7,8
+# Family 3 — Large-Volume Compact Fabric (LVC) : types 12,13
+# Family 4 — Dense Small-Building Fabric (DSB) : types 2,9,10,11,14,15,16,17
 TYPE_FAMILY = {}
-for t in [2, 9, 10, 11, 16, 17]: TYPE_FAMILY[t] = 1
-for t in [12, 13, 14, 15]:       TYPE_FAMILY[t] = 2
-for t in [4, 5]:                  TYPE_FAMILY[t] = 3
-for t in [1, 3, 6, 7, 8]:        TYPE_FAMILY[t] = 4
+for t in [4, 5]:                       TYPE_FAMILY[t] = 1
+for t in [1, 3, 6, 7, 8]:              TYPE_FAMILY[t] = 2
+for t in [12, 13]:                     TYPE_FAMILY[t] = 3
+for t in [2, 9, 10, 11, 14, 15, 16, 17]: TYPE_FAMILY[t] = 4
 
 FAMILY_LABELS = {
-    1: "Medium-density\nbuilt-up",
-    2: "High-density\ncompact",
-    3: "Sparse\nvegetated",
-    4: "Low-density\nheterogeneous",
+    1: "Cropland-Fringe\nLow-Rise",
+    2: "Heterogeneous\nSparse Fabric",
+    3: "Large-Volume\nCompact Fabric",
+    4: "Dense Small-\nBuilding Fabric",
 }
 FAMILY_COLORS = {1: "#4575B4", 2: "#D73027", 3: "#91BFDB", 4: "#FEE090"}
 
@@ -836,7 +858,7 @@ def main():
              rotation="vertical", fontsize=7.5, color="#444444")
 
     # ── Save combined figure ───────────────────────────────────────────────
-    for fmt, dpi in [("pdf", None), ("png", 300)]:
+    for fmt, dpi in [("svg", None), ("png", 300)]:
         out_path = OUT_FIG / f"figure_main.{fmt}"
         kw = {"dpi": dpi} if dpi else {}
         fig.savefig(out_path, bbox_inches="tight", **kw)
@@ -871,7 +893,7 @@ def _save_individual_panels(fm, sdt, cd, ribbons, S_u,
     D : Single wide axes — partial R² curves
     """
     W, H = 13.33, 7.50   # 16:9 inches
-    SAVE_FMTS = [("pdf", None), ("png", 300)]
+    SAVE_FMTS = [("svg", None), ("png", 300)]
 
     def _save(fig, stem):
         for fmt, dpi in SAVE_FMTS:

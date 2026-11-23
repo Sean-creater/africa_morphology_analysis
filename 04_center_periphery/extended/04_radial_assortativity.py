@@ -4,7 +4,12 @@
 Q4 — Experiment C: 17-type spatial assortativity profile r_17(u).
 
 For each city × radial_bin compute Newman categorical assortativity
-using Queen-adjacency (8-neighbor) edges on the hex-grid.
+using distance-based hex adjacency: cells are connected when their
+centroid distance is within tol_factor x the estimated hex spacing (see
+_build_edges_from_coords) — this approximates Queen contiguity but is a
+different graph construction from core/04_radial_network_metrics.py's
+polygon-based libpysal.Queen adjacency; the two modules' r17 values are
+not computed on identical graphs.
 
 Edge assignment: edge midpoint rule — an edge (i, j) is assigned to
 the radial bin that contains  u_e = (u_i + u_j) / 2.
@@ -88,13 +93,14 @@ def _newman_assortativity(types_i: np.ndarray,
     return float((tr_e - sum_ab) / denom)
 
 
-# ── Queen adjacency (hex grid on a regular grid) ──────────────────────────
+# ── Distance-based hex adjacency (approximates Queen contiguity) ──────────
 
 def _build_edges_from_coords(cx: np.ndarray, cy: np.ndarray,
                               tol_factor: float = 1.55) -> tuple:
     """
-    Build Queen-adjacency edges for hex cells using 2D spatial proximity.
-    Cells are connected if their centroid distance ≤ tol_factor × hex_spacing.
+    Build adjacency edges for hex cells using 2D spatial proximity (NOT
+    polygon-based libpysal.Queen — see module docstring). Cells are
+    connected if their centroid distance <= tol_factor x hex_spacing.
     hex_spacing is estimated as the minimum non-zero inter-centroid distance.
 
     Returns (row_idx, col_idx) arrays of edge endpoints.
@@ -116,7 +122,7 @@ def _build_edges_from_coords(cx: np.ndarray, cy: np.ndarray,
 
 
 def _cluster_boot_ci(values: np.ndarray, groups: np.ndarray,
-                     B: int = N_BOOT, alpha: float = 0.10) -> tuple:
+                     B: int = N_BOOT, alpha: float = 0.05) -> tuple:
     uniq_g = np.unique(groups)
     means  = []
     rng    = np.random.default_rng(42)

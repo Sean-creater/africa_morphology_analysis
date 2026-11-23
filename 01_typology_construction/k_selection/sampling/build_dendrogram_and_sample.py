@@ -1,7 +1,8 @@
 """
 build_dendrogram_and_sample.py
 -------------------------------
-1. Load full-Africa M6 embeddings (1,000,207 x 256) from per-city npz files.
+1. Load full-Africa M6 embeddings (1,000,207 x 256) from the continent-
+   scale embedding table.
 2. Subsample to N_CENTROIDS representative points via Mini-batch K-Means.
    Mini-batch K-Means gives compact, well-separated cluster centres that
    uniformly cover the embedding space — better seeds for Ward HAC than
@@ -14,6 +15,7 @@ build_dendrogram_and_sample.py
 """
 
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -32,10 +34,13 @@ from sklearn.preprocessing import normalize
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[1]
 
-EMBEDDINGS_ROOT = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix"
-    "/data_cleaning_20260224/data_embeddings_20260513"
-)
+# Continent-scale embedding table (one row per GridID), published by the
+# companion africa_morphology_embedding repository as a release asset.
+# Override with AFRICA_EMBEDDINGS_PATH if your copy lives elsewhere.
+EMBEDDINGS_PATH = Path(os.environ.get(
+    "AFRICA_EMBEDDINGS_PATH",
+    "../../../africa_morphology_embedding/outputs/africa_embeddings.npz",
+))
 
 OUT_DENDRO_DIR = ROOT / "outputs" / "dendrogram"
 OUT_PAIRS_DIR  = ROOT / "outputs" / "split_pairs"
@@ -88,29 +93,14 @@ def cosine_distance(a: np.ndarray, b: np.ndarray) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Step 1: Load embeddings from per-city npz files
+# Step 1: Load the continent-scale embedding table
 # ---------------------------------------------------------------------------
-log.info(f"Loading embeddings from {EMBEDDINGS_ROOT} …")
-emb_chunks, grid_id_list, city_list, country_list = [], [], [], []
-npz_paths = sorted(EMBEDDINGS_ROOT.rglob("*.npz"))
-log.info(f"  Found {len(npz_paths):,} .npz files")
-
-for path in npz_paths:
-    country = path.parent.name
-    city    = path.stem
-    d = np.load(path, allow_pickle=True)
-    embs = d["embeddings"].astype(np.float32)
-    gids = d["grid_ids"].astype(str)
-    n = len(gids)
-    emb_chunks.append(embs)
-    grid_id_list.extend(gids.tolist())
-    city_list.extend([city] * n)
-    country_list.extend([country] * n)
-
-embeddings = np.vstack(emb_chunks)
-grid_ids   = np.array(grid_id_list)
-cities     = np.array(city_list)
-countries  = np.array(country_list)
+log.info(f"Loading embeddings from {EMBEDDINGS_PATH} …")
+d = np.load(EMBEDDINGS_PATH, allow_pickle=True)
+embeddings = d["embeddings"].astype(np.float32)
+grid_ids   = d["grid_ids"].astype(str)
+cities     = d["city"]
+countries  = d["country"]
 log.info(f"  Loaded {len(grid_ids):,} cells  shape={embeddings.shape}")
 
 embeddings = normalize(embeddings, norm="l2")

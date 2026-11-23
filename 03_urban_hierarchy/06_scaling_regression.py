@@ -1,14 +1,45 @@
 """
 06_scaling_regression.py
 ========================
-Continent-wide standardized OLS scaling regressions for H17* and r17.
+Continent-wide standardized OLS scaling regressions for H17*, r17, and
+r17_z (permutation-null z-score).
 
-Two models per outcome:
+Three models per outcome:
   M1 (raw)      : Y_z ~ X_z                          (OLS, country-clustered SE)
   M2 (adjusted) : Y_z ~ X_z + community_FE           (OLS, country-clustered SE)
+  M3 (size-ctrl): Y_z ~ X_z + log(size)              (OLS, country-clustered SE)
+                  size = n_cells for H17_star, n_edges for r17/r17_z —
+                  H17_star is mechanically bounded by n_cells (a city with
+                  n_cells < 17 cannot show all 17 types, so its ceiling is
+                  log(n_cells)/log(17)), and log(population) correlates
+                  r=0.77 with log(n_cells) here, so part of the raw
+                  population-H17_star slope could mechanically reflect
+                  bigger cities simply having more grid cells. M3 checks
+                  whether the slope survives controlling for that.
+
+                  For r17, n_edges is NOT a clean ceiling the way n_cells
+                  is for H17_star — it's a composite of cell count, graph
+                  topology AND population-driven spatial extent, so
+                  "controlling" for it is a conditional association, not
+                  confound removal (the M3 sign flip for raw r17, below,
+                  should NOT be read as proof the raw relationship is an
+                  artefact). r17_z is the more direct test: a
+                  permutation-null z-score computed in
+                  01_compute_city_metrics.py by holding each city's own
+                  graph structure AND 17-type count distribution fixed,
+                  permuting which node gets which type label, and scoring
+                  the observed r17 against that null — this already nets
+                  out graph size/topology/composition at the single-city
+                  level, so regressing r17_z against population directly
+                  answers "given this city's actual graph, is its spatial
+                  clustering stronger/weaker than chance" without needing
+                  a second-stage covariate adjustment. M3 for r17_z
+                  (+log(n_edges) again) is then a check for RESIDUAL
+                  size-dependence after the null adjustment, not the
+                  primary test.
 
 Where:
-  Y_z = (Y - mean(Y)) / sd(Y)     [H17_star or r17, standardized]
+  Y_z = (Y - mean(Y)) / sd(Y)     [outcome, standardized]
   X_z = (log_pop - mean) / sd     [standardized log population]
 
 Output
@@ -38,11 +69,11 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+
 matplotlib.rcParams.update({
-    "font.family":     "sans-serif",
-    "font.sans-serif": ["Liberation Sans", "DejaVu Sans"],
-    "pdf.fonttype":    42,
-    "ps.fonttype":     42,
+    "font.family":     "Arial",
+    "font.size":       8,
+    "svg.fonttype": "none",
 })
 
 ROOT      = Path(__file__).resolve().parent
@@ -69,12 +100,26 @@ COMM_NAMES = {
 OUTCOMES = {
     "H17_star": "Morphological diversity H* (k=17)",
     "r17":      "Spatial assortativity r (k=17)",
+    "r17_z":    "Assortativity, permutation-null z (k=17)",
 }
 
-# Colours for the two outcomes in coefficient plot
+# Mechanical "sample size" each outcome is bounded by — see module
+# docstring (M3). H17_star's ceiling is set by how many grid cells a city
+# has (can't show more types than cells); r17/r17_z are computed from the
+# observed Queen-adjacency edge pairs, so n_edges plays the analogous role
+# (though, per the module docstring, n_edges is a much less clean size
+# proxy for r17 than n_cells is for H17_star).
+SIZE_COVARIATE = {
+    "H17_star": "n_cells",
+    "r17":      "n_edges",
+    "r17_z":    "n_edges",
+}
+
+# Colours for the outcomes in coefficient plot
 OUTCOME_COLORS = {
     "H17_star": "#2166AC",  # blue
     "r17":      "#D6604D",  # red-orange
+    "r17_z":    "#8B4A9C",  # purple — visually distinct from raw r17
 }
 
 
@@ -140,6 +185,19 @@ def run_regressions(df):
         logging.info("    M2 comm FE:  β=%.4f [%.4f, %.4f]  R²=%.3f  p=%.2e",
                      c2["beta"], c2["ci_lo"], c2["ci_hi"], c2["r2"], c2["pval"])
 
+        # M3: control for the outcome's own mechanical "sample size"
+        # (n_cells for H17_star, n_edges for r17) — see module docstring.
+        size_col = SIZE_COVARIATE[outcome]
+        df_sub3 = df_sub[df_sub[size_col] > 0].copy()
+        df_sub3["log_size"] = np.log(df_sub3[size_col])
+        m3 = run_ols(df_sub3, "Y_z ~ X_z + log_size")
+        c3 = extract_coef(m3, "X_z")
+        c3.update(outcome=outcome, model=f"M3_log_{size_col}",
+                  sd_x=sd_x, sd_y=sd_y, n_countries=df_sub3["country"].nunique())
+        records.append(c3)
+        logging.info("    M3 +log(%s): β=%.4f [%.4f, %.4f]  R²=%.3f  p=%.2e",
+                     size_col, c3["beta"], c3["ci_lo"], c3["ci_hi"], c3["r2"], c3["pval"])
+
     return pd.DataFrame(records)
 
 
@@ -148,17 +206,23 @@ def run_regressions(df):
 # ---------------------------------------------------------------------------
 def plot_coef(coef_df):
     """
-    Two-panel coefficient plot:
-      Left panel:  H17_star  M1 and M2
-      Right panel: r17       M1 and M2
-    Points = β, horizontal bars = 95% CI.
+    One panel per outcome (dynamic — currently H17_star, r17, r17_z), each
+    showing M1/M2/M3. Points = β, horizontal bars = 95% CI.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(140 * MM, 70 * MM), sharey=False)
+    n_out = len(OUTCOMES)
+    fig, axes = plt.subplots(1, n_out, figsize=(70 * n_out * MM, 70 * MM),
+                             sharey=False)
+    if n_out == 1:
+        axes = [axes]
     fig.patch.set_facecolor("white")
 
-    model_labels = {"M1_raw": "Raw OLS", "M2_community_FE": "Community FE"}
-    model_markers = {"M1_raw": "o", "M2_community_FE": "s"}
-    model_offsets = {"M1_raw": 0.12, "M2_community_FE": -0.12}  # y jitter
+    model_labels = {"M1_raw": "Raw OLS", "M2_community_FE": "Community FE",
+                    "M3_log_n_cells": "+ log(n_cells)",
+                    "M3_log_n_edges": "+ log(n_edges)"}
+    model_markers = {"M1_raw": "o", "M2_community_FE": "s",
+                     "M3_log_n_cells": "^", "M3_log_n_edges": "^"}
+    model_offsets = {"M1_raw": 0.22, "M2_community_FE": 0.0,
+                     "M3_log_n_cells": -0.22, "M3_log_n_edges": -0.22}  # y jitter
 
     for ax, (outcome, outcome_label) in zip(axes, OUTCOMES.items()):
         col = OUTCOME_COLORS[outcome]
@@ -197,7 +261,7 @@ def plot_coef(coef_df):
         ax.xaxis.label.set_color("#555555")
 
     fig.tight_layout(pad=1.5, w_pad=3.0)
-    for ext in ("pdf", "png"):
+    for ext in ("svg", "png"):
         fig.savefig(FIG_DIR / f"scaling_coef.{ext}",
                     dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)

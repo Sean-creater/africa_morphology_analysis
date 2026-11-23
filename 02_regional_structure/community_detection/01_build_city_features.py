@@ -52,6 +52,7 @@ Usage
 """
 
 import logging
+import os
 import pickle
 from pathlib import Path
 
@@ -65,8 +66,14 @@ logging.basicConfig(level=logging.INFO,
 
 ROOT      = Path(__file__).parent
 CACHE_DIR = ROOT.parent / "subgraph_construction" / "outputs" / "cache"
-SHP_ROOT  = Path("/home/sjs96_file_share/Momepy_workflow/Metrix/"
-                 "data_cleaning_20260224/SHP_cleaned")
+# SHP geometry + attributes per city, published by the companion
+# africa_morphology_metrics repository (cleaning stage output,
+# "SHP_cleaned"). Override with AFRICA_SHP_CLEANED_ROOT if your
+# copy lives elsewhere.
+SHP_ROOT  = Path(os.environ.get(
+    "AFRICA_SHP_CLEANED_ROOT",
+    "../../../africa_morphology_metrics/outputs/SHP_cleaned",
+))
 OUT_DIR   = ROOT / "outputs"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 

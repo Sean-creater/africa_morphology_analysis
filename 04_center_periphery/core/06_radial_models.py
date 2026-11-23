@@ -60,6 +60,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.formula.api as smf
 
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -67,10 +68,9 @@ logging.basicConfig(
 )
 
 matplotlib.rcParams.update({
-    "font.family":     "sans-serif",
-    "font.sans-serif": ["Liberation Sans", "DejaVu Sans"],
-    "pdf.fonttype":    42,
-    "ps.fonttype":     42,
+    "font.family":     "Arial",
+    "font.size":       8,
+    "svg.fonttype": "none",
 })
 
 ROOT    = Path(__file__).resolve().parent
@@ -87,10 +87,10 @@ MM = 1 / 25.4
 
 GROUP_COLORS = {1: "#714F91", 2: "#E4391B", 3: "#F9992A", 4: "#739CCD"}
 GROUP_LABELS = {
-    1: "Medium-density built-up",
-    2: "High-density compact",
-    3: "Sparse vegetated",
-    4: "Low-density heterogeneous",
+    1: "Cropland-Fringe Low-Rise",
+    2: "Heterogeneous Sparse Fabric",
+    3: "Large-Volume Compact Fabric",
+    4: "Dense Small-Building Fabric",
 }
 SIZE_CLASSES = {
     "Small\n(<200k)":    (0,               np.log(200_000)),
@@ -398,7 +398,7 @@ def build_figure(rt, prof, network, n_boots, n_workers):
     fig.suptitle(rt_labels.get(rt, rt), fontsize=8.5, y=0.98)
 
     stem = f"radial_{rt}"
-    for ext in ("pdf", "png"):
+    for ext in ("svg", "png"):
         fig.savefig(FIG_DIR / f"{stem}.{ext}",
                     dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)

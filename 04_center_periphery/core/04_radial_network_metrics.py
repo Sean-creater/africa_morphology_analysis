@@ -49,6 +49,7 @@ Usage
 import argparse
 import json
 import logging
+import os
 import warnings
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -64,8 +65,14 @@ logging.basicConfig(
 )
 
 ROOT          = Path(__file__).resolve().parent
-SHP_ROOT      = Path("/home/sjs96_file_share/Momepy_workflow/Metrix/"
-                     "data_cleaning_20260224/SHP_cleaned")
+# SHP geometry + attributes per city, published by the companion
+# africa_morphology_metrics repository (cleaning stage output,
+# "SHP_cleaned"). Override with AFRICA_SHP_CLEANED_ROOT if your
+# copy lives elsewhere.
+SHP_ROOT      = Path(os.environ.get(
+    "AFRICA_SHP_CLEANED_ROOT",
+    "../../../africa_morphology_metrics/outputs/SHP_cleaned",
+))
 LABELS_PATH   = (ROOT.parent.parent / "01_typology_construction" / "typology_construction"
                  / "outputs" / "clusters" / "grid_type_labels.csv")
 CELL_POS_PATH = ROOT / "outputs" / "tables" / "cell_radial_position.parquet"
@@ -78,11 +85,15 @@ OUT_PATH      = OUT_DIR / "radial_network_metrics.parquet"
 N_TYPES  = 17
 N_GROUPS = 4
 
+# Data-driven Ward k=4 cut of the 17x91 cluster-profile matrix — see
+# 01_typology_construction/cluster_interpretation/04_cluster_profiles.py.
+# Group 1 Cropland-Fringe Low-Rise (CFL), 2 Heterogeneous Sparse Fabric (HSF),
+# 3 Large-Volume Compact Fabric (LVC), 4 Dense Small-Building Fabric (DSB).
 GROUP_MAP = {
-    2: 1, 17: 1, 11: 1, 16: 1,  9: 1, 10: 1,
-    14: 2, 15: 2, 12: 2, 13: 2,
-    4: 3,  5: 3,
-    1: 4,  6: 4,  7: 4,  3: 4,  8: 4,
+    4: 1,  5: 1,
+    1: 2,  3: 2,  6: 2,  7: 2,  8: 2,
+    12: 3, 13: 3,
+    2: 4,  9: 4, 10: 4, 11: 4, 14: 4, 15: 4, 16: 4, 17: 4,
 }
 
 MIN_EDGES_MAIN   = 30

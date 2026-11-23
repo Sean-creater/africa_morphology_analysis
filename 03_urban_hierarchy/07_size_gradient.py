@@ -5,6 +5,21 @@ Two publication figures (H17_star and r17) showing the continent-wide size
 gradient: grey scatter + OLS regression line (dashed) + LOESS smooth (solid),
 each with 95% CI bands. Standardised β and R² annotated on the figure.
 
+These are the main-text figures and are kept to just the headline
+relationship — no robustness inset. The full robustness picture for both
+outcomes (raw / community FE / country FE / size-controlled / rarefied /
+permutation-null z for r17) lives in the supplementary figures produced
+by 06_scaling_regression.py (scaling_coef.svg) and 08_robustness.py
+(robustness_coef.svg), which already include every comparison needed —
+notably r17_z, the methodologically correct test of whether r17's
+population relationship is a graph-size artefact (it isn't: a naive
++log(n_edges) covariate control flips the sign, but that control itself
+over-corrects — n_edges mixes cell count, graph topology AND
+population-driven spatial extent, so it's a conditional association, not
+confound removal — and the permutation-null z-score, which holds each
+city's own graph structure and type-count distribution fixed, confirms
+the original positive relationship, even more strongly).
+
 Output
 ------
     outputs/figures/size_gradient_H17_star.pdf/png
@@ -26,10 +41,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import matplotlib.lines as mlines
-import statsmodels.api as sm
 import statsmodels.formula.api as smf
 from statsmodels.nonparametric.smoothers_lowess import lowess
-from statsmodels.regression.linear_model import OLS
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,11 +50,11 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+
 matplotlib.rcParams.update({
-    "font.family":     "sans-serif",
-    "font.sans-serif": ["Liberation Sans", "DejaVu Sans"],
-    "pdf.fonttype":    42,
-    "ps.fonttype":     42,
+    "font.family":     "Arial",
+    "font.size":       8,
+    "svg.fonttype": "none",
 })
 
 ROOT      = Path(__file__).resolve().parent
@@ -65,6 +78,7 @@ OUTCOME_CFG = {
         color      = "#2166AC",
         y_major    = 0.2,
         y_minor    = 0.1,
+        legend_loc = "upper left",
     ),
     "r17": dict(
         title      = "Spatial assortativity r (k = 17)",
@@ -73,6 +87,7 @@ OUTCOME_CFG = {
         color      = "#D6604D",
         y_major    = 0.1,
         y_minor    = 0.05,
+        legend_loc = "upper left",
     ),
 }
 
@@ -159,12 +174,21 @@ def ols_line(df_sub, y_col, x_grid):
     alpha, beta = m1.params["Intercept"], m1.params["log_pop"]
     y_line = alpha + beta * x_grid
 
-    # 95% CI from prediction variance (OLS SE, no clustering)
-    X_fit  = sm.add_constant(df_fit["log_pop"].values)
-    X_pred = sm.add_constant(x_grid)
-    m1_plain = OLS(df_fit[y_col].values, X_fit).fit()
-    pred     = m1_plain.get_prediction(X_pred)
-    ci       = pred.conf_int(alpha=0.05)
+    # 95% CI for the mean response, from the SAME country-clustered model
+    # fit above (m1) — not a separately-fit plain-OLS model. statsmodels'
+    # get_prediction() honours whatever cov_type the model was fit with,
+    # so reusing m1 keeps the plotted band consistent with the clustered
+    # beta/significance reported alongside it. A previous version fit a
+    # second, unclustered OLS just for this band, which is near-certainly
+    # too narrow here (47 country clusters vs ~6800+ cities — clustering
+    # almost always widens SEs relative to treating every city as
+    # independent).
+    # m1 was fit via the formula API (smf.ols), so get_prediction() needs
+    # a DataFrame with a matching "log_pop" column, not a raw
+    # constant-augmented array (that's the non-formula OLS API's format).
+    X_pred_df = pd.DataFrame({"log_pop": x_grid})
+    pred      = m1.get_prediction(X_pred_df)
+    ci        = pred.conf_int(alpha=0.05)
     ci_lo, ci_hi = ci[:, 0], ci[:, 1]
 
     # Extract standardized β and R² from country-clustered model
@@ -189,6 +213,7 @@ def ols_line(df_sub, y_col, x_grid):
         r2_fe      = mz_fe.rsquared,
     )
     return y_line, ci_lo, ci_hi, stats
+
 
 
 # ---------------------------------------------------------------------------
@@ -223,7 +248,7 @@ def plot_gradient(df, y_col, cfg, n_boots, n_workers):
     # --- Scatter (all grey, rasterized) ---
     ax.scatter(
         df_sub["log_pop"], df_sub[y_col],
-        c="#CCCCCC", s=3, alpha=0.18,
+        c="#CCCCCC", s=3, alpha=0.5,
         edgecolors="none", linewidths=0, rasterized=True, zorder=2,
     )
 
@@ -264,7 +289,7 @@ def plot_gradient(df, y_col, cfg, n_boots, n_workers):
     h_loess = mlines.Line2D([], [], color=color, lw=2.0, label="LOESS")
     h_ols   = mlines.Line2D([], [], color=color, lw=1.4, ls="--", label="OLS")
     ax.legend(handles=[h_loess, h_ols], fontsize=7, frameon=False,
-              loc="upper left", handlelength=1.8)
+              loc=cfg["legend_loc"], handlelength=1.8)
 
     # --- β annotation: large text next to the OLS line, at right end ---
     # Place label at the right edge of the OLS line
@@ -277,7 +302,7 @@ def plot_gradient(df, y_col, cfg, n_boots, n_workers):
 
     fig.tight_layout(pad=1.2)
     safe = y_col.replace("*", "star")
-    for ext in ("pdf", "png"):
+    for ext in ("svg", "png"):
         out = FIG_DIR / f"size_gradient_{safe}.{ext}"
         fig.savefig(out, dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)

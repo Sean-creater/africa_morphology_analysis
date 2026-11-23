@@ -36,11 +36,11 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+
 matplotlib.rcParams.update({
-    "font.family":     "sans-serif",
-    "font.sans-serif": ["Liberation Sans", "DejaVu Sans"],
-    "pdf.fonttype":    42,
-    "ps.fonttype":     42,
+    "font.family":     "Arial",
+    "font.size":       8,
+    "svg.fonttype": "none",
 })
 
 ROOT      = Path(__file__).resolve().parent
@@ -78,10 +78,10 @@ COMM_NAMES_RANKED = [
 ]
 
 GROUP_NAMES = {
-    "p1": "G1 — Medium-density built-up",
-    "p2": "G2 — High-density compact",
-    "p3": "G3 — Sparse vegetated",
-    "p4": "G4 — Low-density heterogeneous",
+    "p1": "G1 (CFL) — Cropland-Fringe Low-Rise",
+    "p2": "G2 (HSF) — Heterogeneous Sparse Fabric",
+    "p3": "G3 (LVC) — Large-Volume Compact Fabric",
+    "p4": "G4 (DSB) — Dense Small-Building Fabric",
 }
 
 SCATTER_SIZE   = 4
@@ -245,7 +245,7 @@ def plot_one_group(df, y_col, title, n_boots, n_workers,
 
     fig.tight_layout(pad=1.2)
     safe = y_col.replace("*", "star")
-    for ext in ("pdf", "png"):
+    for ext in ("svg", "png"):
         fig.savefig(FIG_DIR / f"comm_scatter_{safe}.{ext}",
                     dpi=300, bbox_inches="tight", facecolor="white")
     plt.close(fig)

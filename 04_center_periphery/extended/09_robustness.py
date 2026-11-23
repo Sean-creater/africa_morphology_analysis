@@ -20,8 +20,8 @@ Check A — Leave-one-country-out (LOCO)
 
 Check B — Alternative radial coordinate (q = dist_m / R98)
   Re-run the main OLS models (β_H per bin, β_r per bin, β_JS per bin)
-  using q = dist_m / R98 as the radial coordinate instead of
-  u = dist_m / Pop^0.4534, keeping the same 10-bin equal-width scheme.
+  using q = dist_m / R98 as the radial coordinate instead of the main
+  u = dist_m / Pop^alpha_R98, keeping the same 10-bin equal-width scheme.
   Compute zone-mean betas and verify the Core/Mid/Outer ordering:
     H17: β_H_mid > β_H_core  AND  β_H_mid > β_H_outer
     r17: β_r_core > β_r_mid  AND  β_r_core > β_r_outer
@@ -31,15 +31,33 @@ Check B — Alternative radial coordinate (q = dist_m / R98)
 Check C — Alternative centre definition (population centroid)
   Replace dist_m_primary (distance from primary morphological cluster)
   with dist_m_pop (distance from population-weighted centroid).
-  Compute u_pop = dist_m_pop / Pop^α (same α = 0.4534), re-bin into
-  10 equal-width bins (same P95 cutoff strategy), re-run the per-bin
-  OLS models and report R_H, R_r, C_core/C_outer.
+  Compute u_pop = dist_m_pop / Pop^alpha_R98 (ALPHA read from
+  allometric_params.json, same value the main analysis's u coordinate
+  uses — see 01_radial_coordinates.py), re-bin into 10 equal-width bins
+  (same P95 cutoff strategy), re-run the per-bin OLS models and report
+  R_H, R_r, C_core/C_outer.
+
+Check D — Coarser 5-bin scheme (sample-size sensitivity)
+  Per-bin sample size collapses sharply toward the periphery under the
+  main 10-bin scheme (e.g. H17: n=1975 in bin 0 vs n=49 in bin 9), so the
+  "effect changes from core to edge" could partly reflect which cities
+  can even be observed way out in bin 9 (larger, more spatially extensive
+  cities), not a genuine radial effect. Re-bins the SAME per-city u-bin
+  summaries (city_bin_H/r/JS, already built in main() for Check A) from
+  10 bins down to 5 by merging adjacent pairs (0+1->0, 2+3->1, ...,
+  8+9->4) — city-level mean within each merged pair first (avoids
+  pseudo-replication for cities present in both merged sub-bins), then
+  re-runs the same per-bin OLS. Reports the 5-bin beta profile and
+  zone-ordering flags under a proportionally similar (1-3-1) zone split.
 
 Zone definitions (matching 08_statistical_models.py)
 -----------------------------------------------------
-  Core  : bins 0–1
-  Middle: bins 2–5
-  Outer : bins 6–9
+  10-bin (Checks A, B, C): Core bins 0-2, Middle bins 3-6, Outer bins 7-9
+    — a predefined, equal-ish (3/4/3) split, NOT chosen by looking at
+    where any outcome's beta curve peaks (see 08_statistical_models.py's
+    ZONE_CORE/MID/OUTER comment for why that matters).
+  5-bin (Check D): Core bin 0, Middle bins 1-3, Outer bin 4 (1/3/1,
+    proportionally similar to the 10-bin 3/4/3 split).
 
 Outputs (all to outputs/tables/robustness/)
 -------------------------------------------
@@ -48,6 +66,8 @@ Outputs (all to outputs/tables/robustness/)
   robustness_checkB_qcoord.csv
       outcome | zone | beta_mean | R_or_C_ratio
       + binary flags: pattern_preserved (all 3 ordering relations hold)
+  robustness_checkD_coarsebins.csv
+      outcome | radial_bin | n_obs | beta | zone ordering flags
   robustness_checkC_popcenter.csv
       statistic | estimate_main | estimate_pop | diff | pct_change
   robustness_summary.csv
@@ -60,6 +80,7 @@ import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from scipy import stats as sp_stats
+from scipy.spatial.distance import jensenshannon
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO,
@@ -71,8 +92,9 @@ ROOT       = Path(__file__).parent
 OUT_TABLES = ROOT / "outputs" / "tables"
 ROBUST_DIR = OUT_TABLES / "robustness"
 
-CELLS_PQ   = OUT_TABLES / "radial_cells.parquet"
-TIERS_PQ   = OUT_TABLES / "city_tiers.parquet"
+CELLS_PQ    = OUT_TABLES / "radial_cells.parquet"
+TIERS_PQ    = OUT_TABLES / "city_tiers.parquet"
+PARAMS_JSON = ROOT.parent / "core" / "outputs" / "tables" / "allometric_params.json"
 
 N_TYPES        = 17
 MIN_OBS_REG    = 10
@@ -80,12 +102,22 @@ MIN_CTRY_REG   = 4
 MIN_EDGES_MAIN = 30
 MIN_TYPES_EDGE = 2
 
-ALPHA = 0.4534   # same population-scaling exponent as 08
+# Population-scaling exponent — read dynamically from the same
+# allometric_params.json that 01_radial_coordinates.py uses to build the
+# MAIN u coordinate, rather than a hardcoded value. This was previously
+# hardcoded to 0.4534, a stale figure from an earlier fit; the current
+# estimate is alpha_R98 = 0.325854 (95% CI [0.285, 0.367]). Using the
+# wrong, stale alpha here silently made Check C's u_pop coordinate
+# inconsistent with the main analysis's u coordinate, invalidating that
+# check's R_H/R_r/C_core/C_outer numbers.
+with open(PARAMS_JSON) as _f:
+    ALPHA = float(json.load(_f)["alpha_R98"])
 
-# Zone definitions — must match 08_statistical_models.py
-ZONE_CORE  = [0, 1]
-ZONE_MID   = [2, 3, 4, 5]
-ZONE_OUTER = [6, 7, 8, 9]
+# Zone definitions — must match 08_statistical_models.py's predefined
+# (non-circular) 3-4-3 split, not the original outcome-chosen 2-4-4 one.
+ZONE_CORE  = [0, 1, 2]
+ZONE_MID   = [3, 4, 5, 6]
+ZONE_OUTER = [7, 8, 9]
 
 
 # ── shared helpers ────────────────────────────────────────────────────────
@@ -353,18 +385,14 @@ def checkB_qcoord(cells: pd.DataFrame, tiers: pd.DataFrame,
             continue
         # Global centroid = mean type distribution in this bin (equal city weight)
         centroid = sbin[type_cols].mean().values
-        # JS divergence of each city from global centroid
-        def js_div(p, q_c):
-            p = p + 1e-12; p /= p.sum()
-            q_c = q_c + 1e-12; q_c /= q_c.sum()
-            m   = 0.5 * (p + q_c)
-            with np.errstate(divide="ignore", invalid="ignore"):
-                kl1 = np.nansum(p   * np.log(p   / m))
-                kl2 = np.nansum(q_c * np.log(q_c / m))
-            return 0.5 * (kl1 + kl2)
-
+        # JS DISTANCE (not divergence) of each city from the global
+        # centroid, base-2 log — same call as 05_between_city_divergence.py's
+        # main analysis. A previous version computed JS DIVERGENCE (natural
+        # log, no sqrt) here instead, which is not the same metric/scale as
+        # the main analysis's JS distance, making this check's beta/C ratio
+        # not comparable to the main results it was meant to validate.
         js_vals = sbin[type_cols].apply(
-            lambda row: js_div(row.values.copy(), centroid.copy()), axis=1)
+            lambda row: float(jensenshannon(row.values, centroid, base=2)), axis=1)
         sbin2 = sbin.copy()
         sbin2["Y"] = js_vals.values
         beta, _, _ = _ols_beta(sbin2)
@@ -527,15 +555,8 @@ def checkC_popcenter(cells: pd.DataFrame, tiers: pd.DataFrame,
         js_records.append(row)
     js_df = pd.DataFrame(js_records).dropna(subset=["log_pop"])
 
-    def js_div(p, q_c):
-        p = p + 1e-12; p /= p.sum()
-        q_c = q_c + 1e-12; q_c /= q_c.sum()
-        m   = 0.5 * (p + q_c)
-        with np.errstate(divide="ignore", invalid="ignore"):
-            kl1 = np.nansum(p   * np.log(p   / m))
-            kl2 = np.nansum(q_c * np.log(q_c / m))
-        return 0.5 * (kl1 + kl2)
-
+    # JS DISTANCE (base-2, matches 05_between_city_divergence.py's main
+    # analysis) — see the identical fix/comment in checkB_qcoord above.
     js_betas = {}
     for rb in range(n_bins):
         sbin = js_df[js_df["radial_bin"] == rb]
@@ -544,7 +565,7 @@ def checkC_popcenter(cells: pd.DataFrame, tiers: pd.DataFrame,
             continue
         centroid = sbin[type_cols].mean().values
         js_vals  = sbin[type_cols].apply(
-            lambda row: js_div(row.values.copy(), centroid.copy()), axis=1)
+            lambda row: float(jensenshannon(row.values, centroid, base=2)), axis=1)
         sbin2 = sbin.copy()
         sbin2["Y"] = js_vals.values
         beta, _, _ = _ols_beta(sbin2)
@@ -609,6 +630,81 @@ def checkC_popcenter(cells: pd.DataFrame, tiers: pd.DataFrame,
             "pct_change":    pct_chg,
         })
     return pd.DataFrame(rows)
+
+
+# 5-bin zone split, proportionally similar to the main 10-bin 3/4/3 split
+# — see module docstring, Check D.
+ZONE_CORE_5  = [0]
+ZONE_MID_5   = [1, 2, 3]
+ZONE_OUTER_5 = [4]
+
+
+def checkD_coarse_bins(city_bin_H: pd.DataFrame, city_bin_r: pd.DataFrame,
+                        city_bin_JS: pd.DataFrame) -> pd.DataFrame:
+    """
+    Re-bin the main (u-coordinate) per-city x 10-bin summaries down to 5
+    bins (merging adjacent pairs) and re-run the per-bin OLS. See module
+    docstring, Check D, for why: per-bin sample size collapses sharply
+    toward the periphery under the 10-bin scheme, so coarser bins trade
+    radial resolution for better-populated outer bins, checking whether
+    the qualitative pattern is an artefact of that collapse.
+    """
+    log.info("Check D: coarser 5-bin scheme (sample-size sensitivity) ...")
+
+    def _coarsen_and_refit(df: pd.DataFrame) -> dict:
+        if df.empty:
+            return {rb: np.nan for rb in range(5)}
+        d = df.copy()
+        d["coarse_bin"] = d["radial_bin"] // 2
+        # City-level mean WITHIN each merged pair first — a city present
+        # in both original bins of a pair (e.g. bins 0 and 1) would
+        # otherwise contribute two rows to the same coarse bin, inflating
+        # its weight relative to a city present in only one.
+        d = (d.groupby(["city", "country", "coarse_bin"], as_index=False)
+              .agg(Y=("Y", "mean"), log_pop=("log_pop", "first")))
+        betas = {}
+        for rb in range(5):
+            sbin = d[d["coarse_bin"] == rb]
+            beta, _, _ = _ols_beta(sbin)
+            betas[rb] = beta
+        return betas
+
+    h_betas  = _coarsen_and_refit(city_bin_H)
+    r_betas  = _coarsen_and_refit(city_bin_r)
+    js_betas = _coarsen_and_refit(city_bin_JS)
+
+    def _n_obs(df: pd.DataFrame, rb: int) -> int:
+        if df.empty:
+            return 0
+        d = df.copy()
+        d["coarse_bin"] = d["radial_bin"] // 2
+        return int(d.loc[d["coarse_bin"] == rb, "city"].nunique())
+
+    rows = []
+    for rb in range(5):
+        rows.append({"outcome": "H17", "radial_bin": rb,
+                     "n_cities": _n_obs(city_bin_H, rb), "beta": h_betas[rb]})
+        rows.append({"outcome": "r17", "radial_bin": rb,
+                     "n_cities": _n_obs(city_bin_r, rb), "beta": r_betas[rb]})
+        rows.append({"outcome": "JS", "radial_bin": rb,
+                     "n_cities": _n_obs(city_bin_JS, rb), "beta": js_betas[rb]})
+    profile_df = pd.DataFrame(rows)
+
+    h_core, h_mid, h_outer    = (_zmean(h_betas, b) for b in (ZONE_CORE_5, ZONE_MID_5, ZONE_OUTER_5))
+    r_core, r_mid, r_outer    = (_zmean(r_betas, b) for b in (ZONE_CORE_5, ZONE_MID_5, ZONE_OUTER_5))
+    js_core, js_mid, js_outer = (_zmean(js_betas, b) for b in (ZONE_CORE_5, ZONE_MID_5, ZONE_OUTER_5))
+    c_core, c_mid, c_outer = abs(js_core), abs(js_mid), abs(js_outer)
+
+    flag_row = pd.DataFrame([{
+        "outcome": "ALL", "radial_bin": np.nan, "n_cities": np.nan, "beta": np.nan,
+        "H_mid_gt_core":   bool(h_mid > h_core),
+        "H_mid_gt_outer":  bool(h_mid > h_outer),
+        "r_core_gt_mid":   bool(r_core > r_mid),
+        "r_core_gt_outer": bool(r_core > r_outer),
+        "C_core_gt_mid":   bool(c_core > c_mid),
+        "C_core_gt_outer": bool(c_core > c_outer),
+    }])
+    return pd.concat([profile_df, flag_row], ignore_index=True)
 
 
 # ── main ──────────────────────────────────────────────────────────────────
@@ -703,6 +799,12 @@ def main():
               index=False, float_format="%.6f")
     log.info("Saved: robustness_checkC_popcenter.csv")
 
+    # ── Check D ───────────────────────────────────────────────────────────
+    cD = checkD_coarse_bins(city_bin_H, city_bin_r, city_bin_JS)
+    cD.to_csv(ROBUST_DIR / "robustness_checkD_coarsebins.csv",
+              index=False, float_format="%.6f")
+    log.info("Saved: robustness_checkD_coarsebins.csv")
+
     # ── Summary ───────────────────────────────────────────────────────────
     summary_rows = []
 
@@ -743,6 +845,21 @@ def main():
             "note":     f"main={row['estimate_main']:.4f}, "
                         f"pop={row['estimate_pop']:.4f}, "
                         f"pct_change={row['pct_change']:.1f}%",
+        })
+
+    # Check D summary (flags are in the last row, outcome == "ALL")
+    dflags = cD[cD["outcome"] == "ALL"].iloc[0]
+    n_note = "; ".join(
+        f"{r.outcome} bin{int(r.radial_bin)}: n={int(r.n_cities)}"
+        for r in cD[cD["outcome"] != "ALL"].itertuples()
+    )
+    for flag_name in ["H_mid_gt_core", "H_mid_gt_outer",
+                      "r_core_gt_mid", "r_core_gt_outer", "C_core_gt_outer"]:
+        summary_rows.append({
+            "check":    "D_coarsebins",
+            "criterion": flag_name,
+            "result":   str(bool(dflags[flag_name])),
+            "note":     n_note,
         })
 
     summary = pd.DataFrame(summary_rows)

@@ -37,6 +37,7 @@ Depends on cached files produced by
 """
 
 import logging
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -51,10 +52,13 @@ from sklearn.preprocessing import normalize
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent  # within_cluster/
 
-EMBEDDINGS_ROOT = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix"
-    "/data_cleaning_20260224/data_embeddings_20260513"
-)
+# Continent-scale embedding table (one row per GridID), published by the
+# companion africa_morphology_embedding repository as a release asset.
+# Override with AFRICA_EMBEDDINGS_PATH if your copy lives elsewhere.
+EMBEDDINGS_PATH = Path(os.environ.get(
+    "AFRICA_EMBEDDINGS_PATH",
+    "../../../../africa_morphology_embedding/outputs/africa_embeddings.npz",
+))
 DENDRO_DIR    = ROOT.parent / "outputs" / "dendrogram"   # reuses existing cache
 OUT_CSV       = ROOT / "outputs" / "within_pairs_k02_k30.csv"
 OUT_ANNOT_DIR = ROOT / "outputs" / "pairs_for_annotation"
@@ -90,22 +94,11 @@ log = logging.getLogger(__name__)
 # Step 1: Load embeddings
 # ---------------------------------------------------------------------------
 log.info("Loading embeddings …")
-emb_chunks, grid_id_list, city_list, country_list = [], [], [], []
-for path in sorted(EMBEDDINGS_ROOT.rglob("*.npz")):
-    country = path.parent.name
-    city    = path.stem
-    d = np.load(path, allow_pickle=True)
-    embs = d["embeddings"].astype(np.float32)
-    gids = d["grid_ids"].astype(str)
-    emb_chunks.append(embs)
-    grid_id_list.extend(gids.tolist())
-    city_list.extend([city] * len(gids))
-    country_list.extend([country] * len(gids))
-
-embeddings = normalize(np.vstack(emb_chunks), norm="l2")
-grid_ids   = np.array(grid_id_list)
-cities     = np.array(city_list)
-countries  = np.array(country_list)
+d = np.load(EMBEDDINGS_PATH, allow_pickle=True)
+embeddings = normalize(d["embeddings"].astype(np.float32), norm="l2")
+grid_ids   = d["grid_ids"].astype(str)
+cities     = d["city"]
+countries  = d["country"]
 log.info(f"Loaded {len(grid_ids):,} cells, shape={embeddings.shape}")
 
 

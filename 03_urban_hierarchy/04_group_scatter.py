@@ -1,26 +1,30 @@
 """
 04_group_scatter.py
 ===================
-Four figures (one per morphological group p1–p4):
-scatter coloured by community + per-community LOESS curves
-+ continental LOESS reference (black dashed) + 95% bootstrap CI band.
+One combined 2x2 figure (p1-p4, one morphological group per panel):
+scatter coloured by community (low-alpha background texture) +
+per-community LOESS curves + a continental LOESS reference line (black
+dashed, no CI band — this is a quick visual anchor, not a re-statement of
+02_plot_hierarchy.py/07_size_gradient.py's own dedicated, CI-backed
+figures for the continental relationship). One shared legend for the
+whole figure (not per-panel), since all four panels use the same 8
+communities.
 
 Output
 ------
-    outputs/figures/group_scatter_p1.pdf/png  … group_scatter_p4.pdf/png
+    outputs/figures/group_scatter_combined.pdf/png
 
 Usage
 -----
-    python 04_group_scatter.py [--boots N] [--workers N]
+    python 04_group_scatter.py
 """
 
-import argparse
 import logging
-from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+import matplotlib.font_manager as fm
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import numpy as np
@@ -33,50 +37,56 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
+# Register a font whose internal name is "Arial" (see other scripts in
+# this project) so matplotlib doesn't silently fall back to DejaVu Sans.
+_FONT_DIR = Path("/home/sjs96_file_share/Scripts4Analysis/_fonts")
+if _FONT_DIR.is_dir():
+    for _f in fm.findSystemFonts(fontpaths=[str(_FONT_DIR)]):
+        fm.fontManager.addfont(_f)
+else:
+    logging.warning("Font directory not found (%s); falling back to default sans-serif.", _FONT_DIR)
+
 matplotlib.rcParams.update({
-    "font.family":     "sans-serif",
-    "font.sans-serif": ["Liberation Sans", "DejaVu Sans"],
-    "pdf.fonttype":    42,
-    "ps.fonttype":     42,
+    "font.family":     "Arial",
+    "font.size":       10,
+    "svg.fonttype": "none",
 })
 
 ROOT      = Path(__file__).resolve().parent
 METRICS   = ROOT / "outputs" / "tables" / "city_metrics.parquet"
 FIG_DIR   = ROOT / "outputs" / "figures"
-CACHE_DIR = ROOT / "outputs" / "cache"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 MM = 1 / 25.4
 
-# Community colours (original community ID 0–7)
+# Same community palette as community_detection / 05_comm_scatter.py
+# (PALETTE_9, indexed by the original 0-based community ID).
 COMM_COLORS = {
-    0: "#4C72B0",
-    1: "#DD8452",
-    2: "#55A868",
-    3: "#C44E52",
-    4: "#9674B4",
-    5: "#8C7156",
-    6: "#D5739D",
-    7: "#797979",
+    0: "#f36424",
+    1: "#672e92",
+    2: "#8bcf02",
+    3: "#139ed3",
+    4: "#ff0000",
+    5: "#ffd700",
+    6: "#293890",
+    7: "#74201e",
 }
 
 GROUP_NAMES = {
-    "p1": "G1 — Medium-density built-up",
-    "p2": "G2 — High-density compact",
-    "p3": "G3 — Sparse vegetated",
-    "p4": "G4 — Low-density heterogeneous",
+    "p1": "G1 (CFL) — Cropland-Fringe Low-Rise",
+    "p2": "G2 (HSF) — Heterogeneous Sparse Fabric",
+    "p3": "G3 (LVC) — Large-Volume Compact Fabric",
+    "p4": "G4 (DSB) — Dense Small-Building Fabric",
 }
 
-SCATTER_SIZE   = 6
-SCATTER_ALPHA  = 0.40
+# matplotlib's `s` is marker AREA (points^2); halving the RADIUS means
+# area -> area * (1/2)^2 = area / 4.
+SCATTER_SIZE   = 6 / 4
 LOESS_FRAC     = 0.35
-N_BOOTS        = 500
-N_BOOT_WORKERS = 14
 
 
 # ---------------------------------------------------------------------------
-# LOESS + country-cluster bootstrap CI (cached)
+# LOESS
 # ---------------------------------------------------------------------------
 def fit_loess(x, y, x_grid, frac=LOESS_FRAC):
     mask = np.isfinite(x) & np.isfinite(y)
@@ -84,64 +94,6 @@ def fit_loess(x, y, x_grid, frac=LOESS_FRAC):
         return np.full(len(x_grid), np.nan)
     sm = lowess(y[mask], x[mask], frac=frac, return_sorted=True)
     return np.interp(x_grid, sm[:, 0], sm[:, 1])
-
-
-def _boot_worker(args):
-    seed, x_vals, y_vals, countries, x_grid, frac = args
-    rng      = np.random.default_rng(seed)
-    unique_c = np.unique(countries)
-    chosen   = rng.choice(unique_c, size=len(unique_c), replace=True)
-    idx      = np.concatenate([np.where(countries == c)[0] for c in chosen])
-    xb, yb   = x_vals[idx], y_vals[idx]
-    mask     = np.isfinite(xb) & np.isfinite(yb)
-    if mask.sum() < 20:
-        return None
-    try:
-        sm = lowess(yb[mask], xb[mask], frac=frac, return_sorted=True)
-        return np.interp(x_grid, sm[:, 0], sm[:, 1])
-    except Exception:
-        return None
-
-
-def continental_loess_ci(df, y_col, x_grid, n_boots, n_workers,
-                         frac=LOESS_FRAC, cache_key=None):
-    """Return (y_hat, ci_lo, ci_hi) from country-cluster bootstrap LOESS.
-
-    The cache (keyed by cache_key) is invalidated whenever METRICS' mtime
-    changes, so a regenerated city_metrics.parquet always triggers a fresh
-    bootstrap rather than silently reusing a CI computed from stale input.
-    """
-    x   = df["log_pop"].values
-    y   = df[y_col].values
-    cty = df["country"].values
-    y_hat = fit_loess(x, y, x_grid, frac=frac)
-    input_mtime = METRICS.stat().st_mtime
-
-    if cache_key:
-        cache_file = CACHE_DIR / f"{cache_key}.npz"
-        if cache_file.exists():
-            cached = np.load(cache_file)
-            if float(cached.get("input_mtime", -1)) == input_mtime:
-                return y_hat, cached["ci_lo"], cached["ci_hi"]
-            logging.info("  Cache stale for %s (input changed), recomputing ...", cache_key)
-
-    seeds = [int(sq.generate_state(1)[0])
-             for sq in np.random.SeedSequence(42).spawn(n_boots)]
-    args  = [(sd, x, y, cty, x_grid, frac) for sd in seeds]
-    preds = []
-    with ProcessPoolExecutor(max_workers=n_workers) as ex:
-        for res in ex.map(_boot_worker, args):
-            if res is not None:
-                preds.append(res)
-    preds = np.array(preds)
-    ci_lo = np.percentile(preds, 2.5,  axis=0)
-    ci_hi = np.percentile(preds, 97.5, axis=0)
-
-    if cache_key:
-        np.savez(cache_file, ci_lo=ci_lo, ci_hi=ci_hi, input_mtime=input_mtime)
-        logging.info("  Cached: %s", cache_key)
-
-    return y_hat, ci_lo, ci_hi
 
 
 # ---------------------------------------------------------------------------
@@ -158,28 +110,22 @@ def _style_ax(ax):
     ax.xaxis.label.set_color("#555555")
     ax.yaxis.label.set_color("#555555")
     ax.title.set_color("#222222")
-    ax.grid(axis="y", color="#EEEEEE", lw=0.6, zorder=0)
 
 
 # ---------------------------------------------------------------------------
-# One figure
+# One panel
 # ---------------------------------------------------------------------------
-def plot_one_group(df, y_col, title, n_boots, n_workers):
-    communities = sorted(df["community"].unique())
-    x_lo   = np.nanpercentile(df["log_pop"], 1)
-    x_hi   = np.nanpercentile(df["log_pop"], 99.5)
-    x_grid = np.linspace(x_lo, x_hi, 400)
-
-    fig, ax = plt.subplots(figsize=(130 * MM, 108 * MM))
-    fig.patch.set_facecolor("white")
-
-    # Scatter: coloured by community
+def plot_one_panel(ax, df, y_col, title, communities, x_grid, x_lo, x_hi):
     x_all = df["log_pop"].values
     y_all = df[y_col].values
+
+    # Scatter: coloured by community, low alpha — background texture
+    # showing data support, not meant to be read off directly (the
+    # per-community LOESS curves are the figure's actual message).
     for comm in communities:
         mask = df["community"].values == comm
         ax.scatter(x_all[mask], y_all[mask],
-                   c=COMM_COLORS[comm], s=SCATTER_SIZE, alpha=SCATTER_ALPHA,
+                   c=COMM_COLORS[comm], s=SCATTER_SIZE, alpha=0.15,
                    edgecolors="none", linewidths=0, rasterized=True, zorder=2)
 
     # Per-community LOESS curves
@@ -188,62 +134,66 @@ def plot_one_group(df, y_col, title, n_boots, n_workers):
         yhat = fit_loess(x_all[mask], y_all[mask], x_grid)
         ax.plot(x_grid, yhat, color=COMM_COLORS[comm], lw=1.1, zorder=3)
 
-    # Continental LOESS + CI
-    logging.info("  Continental LOESS + CI for %s ...", y_col)
-    cache_key = f"loess_ci_{y_col}_b{n_boots}"
-    y_cont, ci_lo, ci_hi = continental_loess_ci(
-        df, y_col, x_grid, n_boots, n_workers, cache_key=cache_key)
-    ax.fill_between(x_grid, ci_lo, ci_hi,
-                    color="#BBBBBB", alpha=0.55, linewidth=0, zorder=4)
-    ax.plot(x_grid, y_cont, color="black", lw=2.0, linestyle="--", zorder=5)
+    # Continental reference (quick visual anchor, no bootstrap CI band —
+    # see module docstring)
+    y_cont = fit_loess(x_all, y_all, x_grid)
+    ax.plot(x_grid, y_cont, color="black", lw=1.6, linestyle="--", zorder=4)
 
     ax.set_xlim(x_lo - 0.1, x_hi + 0.1)
     ax.set_ylim(-0.02, 1.02)
-    ax.set_title(title, fontsize=9, pad=6, fontweight="bold")
+    ax.set_title(title, fontsize=9, pad=5, fontweight="bold")
     ax.set_xlabel("log(population)", fontsize=8)
     ax.set_ylabel("Group share", fontsize=8)
     _style_ax(ax)
-
-    comm_handles = [
-        mlines.Line2D([], [], color=COMM_COLORS[c], lw=1.5,
-                      label=f"Community {c}")
-        for c in communities
-    ]
-    africa_handle = mlines.Line2D(
-        [], [], color="black", lw=2.0, linestyle="--",
-        label="Africa LOESS ± 95% CI"
-    )
-    ax.legend(handles=comm_handles + [africa_handle],
-              fontsize=5.5, frameon=False, loc="upper right", ncol=1)
-
-    fig.tight_layout(pad=1.2)
-    for ext in ("pdf", "png"):
-        fig.savefig(FIG_DIR / f"group_scatter_{y_col}.{ext}",
-                    dpi=300, bbox_inches="tight", facecolor="white")
-    plt.close(fig)
-    logging.info("Saved: group_scatter_%s.pdf/png", y_col)
 
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-def main(n_boots=N_BOOTS, n_workers=N_BOOT_WORKERS):
+def main():
     logging.info("Loading city metrics ...")
     df = pd.read_parquet(METRICS)
     df = df.dropna(subset=["log_pop", "community", "p1", "p2", "p3", "p4"]).copy()
     df["community"] = df["community"].astype(int)
-    logging.info("  %d cities, %d communities.", len(df), df["community"].nunique())
+    communities = sorted(df["community"].unique())
+    logging.info("  %d cities, %d communities.", len(df), len(communities))
 
-    for y_col, title in GROUP_NAMES.items():
+    x_lo   = np.nanpercentile(df["log_pop"], 1)
+    x_hi   = np.nanpercentile(df["log_pop"], 99.5)
+    x_grid = np.linspace(x_lo, x_hi, 400)
+
+    fig, axes = plt.subplots(2, 2, figsize=(150 * MM, 130 * MM))
+    for ax, (y_col, title) in zip(axes.ravel(), GROUP_NAMES.items()):
         logging.info("=== %s ===", y_col)
-        plot_one_group(df, y_col, title, n_boots=n_boots, n_workers=n_workers)
+        plot_one_panel(ax, df, y_col, title, communities, x_grid, x_lo, x_hi)
+    fig.patch.set_facecolor("white")
+
+    # One shared legend for the whole figure — all four panels use the
+    # same 8 communities, so a per-panel legend would just repeat.
+    # Label = 1-based community number (c+1), matching every other
+    # community figure's display convention (internal ID is 0-based, but
+    # shown as "1".."8" everywhere, e.g. community_map.svg's legend).
+    comm_handles = [
+        mlines.Line2D([], [], color=COMM_COLORS[c], lw=1.5, label=str(c + 1))
+        for c in communities
+    ]
+    cont_handle = mlines.Line2D(
+        [], [], color="black", lw=1.6, linestyle="--", label="Africa"
+    )
+    fig.legend(handles=comm_handles + [cont_handle], title="Community",
+              fontsize=7, title_fontsize=7.5, frameon=False,
+              loc="center left", bbox_to_anchor=(1.0, 0.5),
+              handlelength=1.4)
+
+    fig.tight_layout(pad=1.0)
+    for ext in ("svg", "png"):
+        fig.savefig(FIG_DIR / f"group_scatter_combined.{ext}",
+                    dpi=300, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    logging.info("Saved: group_scatter_combined.pdf/png")
 
     logging.info("Done. Figures in %s", FIG_DIR)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--boots",   type=int, default=N_BOOTS)
-    parser.add_argument("--workers", type=int, default=N_BOOT_WORKERS)
-    args = parser.parse_args()
-    main(n_boots=args.boots, n_workers=args.workers)
+    main()

@@ -53,7 +53,7 @@ MIN_CITIES = 3
 
 
 def _cluster_boot_ci(values: np.ndarray, groups: np.ndarray,
-                     B: int = N_BOOT, alpha: float = 0.10) -> tuple:
+                     B: int = N_BOOT, alpha: float = 0.05) -> tuple:
     uniq_g = np.unique(groups)
     means  = []
     rng    = np.random.default_rng(42)

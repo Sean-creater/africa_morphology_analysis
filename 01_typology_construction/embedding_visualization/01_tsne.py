@@ -48,7 +48,7 @@ import pyarrow.parquet as pq
 from sklearn.preprocessing import normalize
 from openTSNE import TSNE
 
-from config import EMBEDDINGS_DIR, MODEL_INPUT, TSNE_PARQUET, OUT_FIG_DIR
+from config import EMBEDDINGS_PATH, MODEL_INPUT, TSNE_PARQUET, OUT_FIG_DIR
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -94,35 +94,14 @@ MM_TO_IN = 1 / 25.4
 # Step 1 — Load embeddings
 # ---------------------------------------------------------------------------
 def load_all_embeddings():
-    emb_chunks, id_chunks, city_chunks, country_chunks = [], [], [], []
-    country_dirs = sorted(d for d in EMBEDDINGS_DIR.iterdir() if d.is_dir())
-    n_cities = 0
     t0 = time.time()
-    log.info("Loading embeddings from %s ...", EMBEDDINGS_DIR)
-
-    for country_dir in country_dirs:
-        for npz_path in sorted(country_dir.glob("*.npz")):
-            try:
-                f    = np.load(npz_path, allow_pickle=True)
-                emb  = f["embeddings"].astype(np.float32)
-                gids = f["grid_ids"].astype(str)
-                n    = len(emb)
-                emb_chunks.append(emb)
-                id_chunks.append(gids)
-                city_chunks.append(np.full(n, npz_path.stem))
-                country_chunks.append(np.full(n, country_dir.name))
-                n_cities += 1
-            except Exception as exc:
-                log.warning("SKIP %s/%s: %s", country_dir.name, npz_path.stem, exc)
-        if n_cities % 1000 == 0 and n_cities:
-            loaded = sum(len(c) for c in emb_chunks)
-            log.info("  %d cities  %s cells  [%.0fs]",
-                     n_cities, f"{loaded:,}", time.time() - t0)
-
-    embeddings = np.vstack(emb_chunks)
-    grid_ids   = np.concatenate(id_chunks).astype(str)
-    cities     = np.concatenate(city_chunks).astype(str)
-    countries  = np.concatenate(country_chunks).astype(str)
+    log.info("Loading embeddings from %s ...", EMBEDDINGS_PATH)
+    f = np.load(EMBEDDINGS_PATH, allow_pickle=True)
+    embeddings = f["embeddings"].astype(np.float32)
+    grid_ids   = f["grid_ids"].astype(str)
+    cities     = f["city"].astype(str)
+    countries  = f["country"].astype(str)
+    n_cities = len({(c, ci) for c, ci in zip(countries, cities)})
     log.info("Loaded %s cells from %d cities  [%.1fs]",
              f"{len(embeddings):,}", n_cities, time.time() - t0)
     return embeddings, grid_ids, cities, countries

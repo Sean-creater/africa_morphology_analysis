@@ -41,7 +41,7 @@ from sklearn.metrics import (
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
 from config import (
-    EMBEDDINGS_ROOT, CLUSTER_DIR, LOG_DIR, FIG_DIR,
+    EMBEDDINGS_PATH, CLUSTER_DIR, LOG_DIR, FIG_DIR,
     K_LIST, K_FOCAL, SIL_SAMPLE, RANDOM_SEED,
 )
 
@@ -64,16 +64,11 @@ log('03_KSELECTION_DIAGNOSTICS')
 log('=' * 60)
 
 # ── Load embeddings ────────────────────────────────────────────────────────────
-log(f'\nLoading embeddings from:\n  {EMBEDDINGS_ROOT}')
+log(f'\nLoading embeddings from:\n  {EMBEDDINGS_PATH}')
 t0 = time.time()
-npz_paths = sorted(EMBEDDINGS_ROOT.rglob('*.npz'))
-all_embs, all_gids = [], []
-for path in npz_paths:
-    d = np.load(path, allow_pickle=True)
-    all_embs.append(d['embeddings'].astype(np.float32))
-    all_gids.extend(d['grid_ids'].astype(str).tolist())
-embeddings = np.vstack(all_embs)
-grid_ids   = np.array(all_gids)
+d = np.load(EMBEDDINGS_PATH, allow_pickle=True)
+embeddings = d['embeddings'].astype(np.float32)
+grid_ids   = d['grid_ids'].astype(str)
 N = len(grid_ids)
 log(f'  Loaded {N:,} cells in {time.time() - t0:.1f}s')
 

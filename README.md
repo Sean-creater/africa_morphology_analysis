@@ -60,6 +60,22 @@ None of the following are bundled in this repository:
 | Per-city cleaned morphology CSVs and SHP grid geometries ([`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)) | Input throughout |
 | Africa country boundary shapefile | Map figures in `02_regional_structure/community_detection/` |
 
+By default, scripts look for the companion repositories as sibling
+directories of this one, e.g.:
+
+```
+parent_dir/
+├── africa_morphology_analysis/       (this repository)
+├── africa_morphology_embedding/
+└── africa_morphology_metrics/
+```
+
+Override any individual path with the corresponding environment
+variable instead of editing the scripts: `AFRICA_EMBEDDINGS_PATH`,
+`AFRICA_CLEANED_CSV_ROOT`, `AFRICA_SHP_CLEANED_ROOT`,
+`AFRICA_MORPHOLOGY_METRICS_DATA_ROOT`, `AFRICA_MORPHOLOGY_IMAGERY_ROOT`,
+`AFRICA_BOUNDARY_SHP`.
+
 See the manuscript's Methods and Supplementary Information for the full
 analysis and construction details.
 

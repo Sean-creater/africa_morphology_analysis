@@ -13,13 +13,13 @@ to the teacher-model training set produced by that package.
 Output: outputs/images/{city}/{grid_id}.png  (1000×1000 RGBA PNG)
 
 Usage:
-    PYTHON=/home/sjs96_file_share/anaconda3/envs/Africa_env/bin/python3
-    $PYTHON imagery/generate_images.py --project YOUR_GEE_PROJECT_ID
-    $PYTHON imagery/generate_images.py --project YOUR_GEE_PROJECT_ID --workers 4
+    python imagery/generate_images.py --project YOUR_GEE_PROJECT_ID
+    python imagery/generate_images.py --project YOUR_GEE_PROJECT_ID --workers 4
 """
 
 import argparse
 import logging
+import os
 import sys
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -39,17 +39,26 @@ LOG_DIR    = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 OUT_IMAGES.mkdir(parents=True, exist_ok=True)
 
-# Path to a checked-out copy of the companion africa_morphology_imagery
-# repository (https://github.com/Sean-creater/africa_morphology_imagery).
-AFRICA_MORPHOLOGY_IMAGERY = Path(
-    "/path/to/africa_morphology_imagery/africa_morphology_imagery"
-)
-FULL_GRID_ROOT    = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix/data_cleaning_20260224/SHP_cleaned"
-)
-MOMEPY_DATA_ROOT  = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix/data"
-)
+# Checked-out copy of the companion africa_morphology_imagery repository.
+# Override with AFRICA_MORPHOLOGY_IMAGERY_ROOT if your copy lives
+# elsewhere.
+AFRICA_MORPHOLOGY_IMAGERY = Path(os.environ.get(
+    "AFRICA_MORPHOLOGY_IMAGERY_ROOT",
+    "../../../../africa_morphology_imagery/africa_morphology_imagery",
+))
+
+# SHP_cleaned geometry and the per-city building/road-network intermediates,
+# both produced by the companion africa_morphology_metrics repository.
+# Override with AFRICA_SHP_CLEANED_ROOT / AFRICA_MORPHOLOGY_METRICS_DATA_ROOT
+# if your copy lives elsewhere.
+FULL_GRID_ROOT    = Path(os.environ.get(
+    "AFRICA_SHP_CLEANED_ROOT",
+    "../../../../africa_morphology_metrics/outputs/SHP_cleaned",
+))
+MOMEPY_DATA_ROOT  = Path(os.environ.get(
+    "AFRICA_MORPHOLOGY_METRICS_DATA_ROOT",
+    "../../../../africa_morphology_metrics/data",
+))
 
 sys.path.insert(0, str(AFRICA_MORPHOLOGY_IMAGERY))
 

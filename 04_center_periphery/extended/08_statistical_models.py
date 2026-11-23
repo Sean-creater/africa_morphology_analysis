@@ -250,18 +250,71 @@ def _fit_interaction_model(df: pd.DataFrame, pop_map: dict,
 
 
 # ── Zone definitions (bins 0–9) ───────────────────────────────────────────
-# Core  : bins 0–1   (innermost two bins, u < 2×7.29 = 14.58)
-# Middle: bins 2–5   (mid-city zone where H17 beta peaks)
-# Outer : bins 6–9   (distal periphery)
-ZONE_CORE   = [0, 1]
-ZONE_MID    = [2, 3, 4, 5]
-ZONE_OUTER  = [6, 7, 8, 9]
+# Predefined as an equal-ish (3/4/3) three-way split of the 10 bins — NOT
+# chosen by looking at where any outcome's beta curve peaks. An earlier
+# version defined Middle as "bins 2-5, where H17 beta peaks": choosing a
+# zone boundary from the same curve a zone contrast is then tested on is
+# circular — the bootstrap CI/p-value for "mid > core" did not account
+# for that boundary itself being selected post-hoc. See
+# _zone_definition_sensitivity() below for a check that the qualitative
+# ordering (mid > core for H17, core > mid for r17, core > outer for JS)
+# is not an artefact of this particular 3/4/3 choice: it re-evaluates the
+# same zone means under several neighbouring boundary choices, including
+# the original (circular) one, using the already-fit per-bin betas in
+# formal_models.csv (no re-fitting — this is a free, lightweight check,
+# unlike the bootstrap-based primary estimate below which does refit).
+ZONE_CORE   = [0, 1, 2]
+ZONE_MID    = [3, 4, 5, 6]
+ZONE_OUTER  = [7, 8, 9]
+
+# Alternative zone splits for the sensitivity check (name -> (core, mid,
+# outer)); includes the original circularly-chosen split for transparency.
+ZONE_SPLITS_SENSITIVITY = {
+    "3-4-3 (primary, predefined)":      ([0, 1, 2],    [3, 4, 5, 6],       [7, 8, 9]),
+    "2-4-4 (original, outcome-chosen)": ([0, 1],       [2, 3, 4, 5],       [6, 7, 8, 9]),
+    "2-5-3":                            ([0, 1],       [2, 3, 4, 5, 6],    [7, 8, 9]),
+    "3-3-4":                            ([0, 1, 2],    [3, 4, 5],          [6, 7, 8, 9]),
+    "4-3-3":                            ([0, 1, 2, 3], [4, 5, 6],          [7, 8, 9]),
+}
 
 
 def _zone_mean_beta(fm: pd.DataFrame, outcome: str, bins: list) -> float:
     """Mean β across specified bins for a given outcome."""
     sub = fm[(fm["outcome"] == outcome) & (fm["radial_bin"].isin(bins))]
     return float(sub["beta"].mean()) if len(sub) > 0 else np.nan
+
+
+def _zone_definition_sensitivity(fm: pd.DataFrame) -> pd.DataFrame:
+    """
+    Re-evaluate the three qualitative zone contrasts (H17 mid>core,
+    r17 core>mid, JS/C core>outer) under several candidate zone-boundary
+    definitions, using the SAME already-fit per-bin betas in fm — no
+    re-fitting, so this is cheap enough to run for every candidate
+    (unlike _bootstrap_zone_delta, which does refit and is only run once,
+    on the primary predefined split). Answers "does the qualitative
+    pattern survive a reasonable alternative boundary choice", which a
+    single bootstrap CI on one (potentially cherry-picked) split cannot.
+    """
+    rows = []
+    for split_name, (core, mid, outer) in ZONE_SPLITS_SENSITIVITY.items():
+        h_core,  h_mid,  h_outer  = (_zone_mean_beta(fm, "H17", b) for b in (core, mid, outer))
+        r_core,  r_mid,  r_outer  = (_zone_mean_beta(fm, "r17", b) for b in (core, mid, outer))
+        js_core, js_mid, js_outer = (_zone_mean_beta(fm, "JS",  b) for b in (core, mid, outer))
+        c_core, c_mid, c_outer = abs(js_core), abs(js_mid), abs(js_outer)
+        rows.append({
+            "zone_split":      split_name,
+            "core_bins":       str(core), "mid_bins": str(mid), "outer_bins": str(outer),
+            "beta_H_core":     h_core, "beta_H_mid": h_mid, "beta_H_outer": h_outer,
+            "beta_r_core":     r_core, "beta_r_mid": r_mid, "beta_r_outer": r_outer,
+            "C_core":          c_core, "C_mid": c_mid, "C_outer": c_outer,
+            "H_mid_gt_core":   bool(h_mid > h_core),
+            "H_mid_gt_outer":  bool(h_mid > h_outer),
+            "r_core_gt_mid":   bool(r_core > r_mid),
+            "r_core_gt_outer": bool(r_core > r_outer),
+            "C_core_gt_mid":   bool(c_core > c_mid),
+            "C_core_gt_outer": bool(c_core > c_outer),
+        })
+    return pd.DataFrame(rows)
 
 
 def _bootstrap_zone_delta(df_H: pd.DataFrame, df_r: pd.DataFrame,
@@ -534,6 +587,17 @@ def main():
         result_int.to_csv(OUT_TABLES / "profile_interaction_model.csv",
                           index=False, float_format="%.6f")
         log.info("Saved: profile_interaction_model.csv")
+
+    # ── Zone-definition sensitivity (see ZONE_CORE/MID/OUTER comment) ────
+    if all_per_bin and len(result_pb) > 0:
+        zsens = _zone_definition_sensitivity(result_pb)
+        zsens.to_csv(OUT_TABLES / "zone_definition_sensitivity.csv",
+                     index=False, float_format="%.6f")
+        log.info("Saved: zone_definition_sensitivity.csv")
+        print("\n=== Zone-definition sensitivity (qualitative ordering) ===")
+        print(zsens[["zone_split", "H_mid_gt_core", "H_mid_gt_outer",
+                     "r_core_gt_mid", "r_core_gt_outer",
+                     "C_core_gt_mid", "C_core_gt_outer"]].to_string(index=False))
 
     # ── summary print ─────────────────────────────────────────────────────
     if all_per_bin and len(result_pb) > 0:

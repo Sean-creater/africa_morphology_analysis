@@ -35,6 +35,9 @@ geographic community or country.
 7. `08_robustness.py` — robustness checks for the scaling regressions:
    community fixed effects, country fixed effects, a minimum-cell-count
    filter, and the 4-group outcome versions.
+8. `09a_group_share_breakpoint.py` — the population range where each
+   4-group composition share (p1-p4) shifts fastest, used to annotate
+   the breakpoint in `02_plot_hierarchy.py`'s figure.
 
 ## Data requirements
 
@@ -52,8 +55,7 @@ geographic community or country.
 ## Usage
 
 ```bash
-PYTHON=/home/sjs96_file_share/anaconda3/envs/DL_env/bin/python3
-$PYTHON 01_compute_city_metrics.py
+python 01_compute_city_metrics.py
 python 02_plot_hierarchy.py
 python 03_country_slopes.py
 python 04_group_scatter.py
@@ -61,6 +63,7 @@ python 05_comm_scatter.py
 python 06_scaling_regression.py
 python 07_size_gradient.py
 python 08_robustness.py
+python 09a_group_share_breakpoint.py
 ```
 
 ## Outputs

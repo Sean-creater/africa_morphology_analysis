@@ -20,6 +20,8 @@ Outputs
 -------
   regional_effect_profile.csv
       radial_bin | n_cities | n_countries | n_pcoa_axes |
+      pcoa_variance_explained | design_rank_full |
+      n_boot_requested | n_boot_valid |
       partial_r2_climate | partial_r2_colonial | partial_r2_gdp |
       partial_r2_population | r2_full  (+ 95% CI columns per block)
 """
@@ -59,6 +61,8 @@ def main():
         log.warning(f"{AI_PATH} not found — skipping regional effect analysis.")
         pd.DataFrame(columns=[
             "radial_bin", "n_cities", "n_countries", "n_pcoa_axes",
+            "pcoa_variance_explained", "design_rank_full",
+            "n_boot_requested", "n_boot_valid",
             "partial_r2_climate", "partial_r2_colonial",
             "partial_r2_gdp", "partial_r2_population", "r2_full",
         ]).to_csv(OUT_TABLES / "regional_effect_profile.csv", index=False)

@@ -31,10 +31,12 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent
 # Per-city cleaned morphology CSVs, produced by the companion
-# africa_morphology_metrics repository.
-CLEANED_DIR = Path(
-    "/home/sjs96_file_share/Momepy_workflow/Metrix/data_cleaning_20260224/Cleaned"
-)
+# africa_morphology_metrics repository. Override with
+# AFRICA_CLEANED_CSV_ROOT if your copy lives elsewhere.
+CLEANED_DIR = Path(os.environ.get(
+    "AFRICA_CLEANED_CSV_ROOT",
+    "../../../africa_morphology_metrics/outputs/Cleaned",
+))
 LABELS_CSV = ROOT.parent / "typology_construction" / "outputs" / "clusters" / "grid_type_labels.csv"
 OUT_DIR = ROOT / "outputs" / "tables"
 OUT_FILE = OUT_DIR / "merged_k17.parquet"

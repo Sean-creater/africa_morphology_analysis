@@ -4,22 +4,22 @@
 Publication-quality illustration of population-scaled radial bins — Accra.
 
 Figure caption (to be used outside the figure):
-    Illustration of population-scaled radial binning for Accra, Ghana (T4,
-    Pop ≈ 4.7 M).  Each 250 m grid cell is assigned a bin (0 = core,
-    7 = periphery for Accra) based on its scaled distance
-    u = d / Pop^{0.4534} from the population-weighted primary centre.
-    Ten equal-width bins are defined on the pooled u distribution across
-    all 561 cities; bins 0–1 form the Core, 2–5 the Mid zone, and 6–9
-    the Outer zone.  Dashed arcs show the bin-boundary circles clipped to
-    the city footprint.  Inset: population density (Pop2022 per cell)
-    within the core zone, illustrating how the primary centre is defined
-    as the population-weighted centroid of the largest contiguous
-    high-density cluster.
+    Illustration of the relative radial coordinate q = d / R_98 for Accra,
+    Ghana.  Each 250 m grid cell is assigned a bin (0 = core, 9 = periphery)
+    based on its distance d from the population-weighted primary centre,
+    scaled by the city's own 98th-percentile radial extent R_98.  Ten
+    equal-width bins are defined on the pooled q distribution (common
+    support up to q_P95) across all cities; bins 0-2 form the Core zone,
+    3-6 the Mid zone, and 7-9 the Outer zone (same 3-4-3 split used
+    throughout 04_center_periphery/extended, e.g. 08_statistical_models.py's
+    ZONE_CORE/ZONE_MID/ZONE_OUTER). Dashed arcs show the bin-boundary
+    circles clipped to the city footprint.
 """
 
 import warnings
 warnings.filterwarnings("ignore")
 
+import os
 import numpy as np
 import pandas as pd
 import matplotlib
@@ -29,35 +29,62 @@ import matplotlib.patches as mpatches
 import matplotlib.colors as mcolors
 import matplotlib.patheffects as mpe
 from matplotlib.lines import Line2D
+from matplotlib.path import Path as MplPath
+from matplotlib.patches import PathPatch
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import geopandas as gpd
 from shapely.geometry import Point as ShpPoint
 from scipy.spatial import cKDTree
 from pathlib import Path
-from datetime import date
+
 
 matplotlib.rcParams.update({
-    "font.family":      "sans-serif",
-    "font.sans-serif":  ["Helvetica Neue", "Arial", "DejaVu Sans"],
-    "font.size":        9,
+    "font.family":      "Arial",
+    "font.size":        8,
     "axes.linewidth":   0.6,
-    "pdf.fonttype":     42,   # embeds fonts in PDF
-    "ps.fonttype":      42,
+    "svg.fonttype": "none",
 })
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 ROOT       = Path(__file__).parent
 OUT_TABLES = ROOT / "outputs" / "tables"
-FIG_DATE   = date.today().strftime("%Y-%m-%d")
-OUT_FIG    = ROOT / "outputs" / "figures" / FIG_DATE
+OUT_FIG    = ROOT / "outputs" / "figures"
 OUT_FIG.mkdir(parents=True, exist_ok=True)
 
-ACCRA_SHP  = Path("/home/sjs96_file_share/Momepy_workflow/Metrix/"
-                  "data_cleaning_20260224/Crowley-poster/Accra.shp")
-CITY_BOUND = Path("/home/sjs96_file_share/Momepy_workflow/Metrix/"
-                  "data_cleaning_20260224/Crowley-poster/city_boundaries.shp")
+# Accra's 250m grid-cell geometry (GridID, city, country, geometry) and
+# the Africapolis city-boundary polygons, both subsets of the SHP_cleaned
+# geometry published by the companion africa_morphology_metrics
+# repository. Override with AFRICA_ACCRA_SHP / AFRICA_CITY_BOUNDARIES_SHP
+# to point at your own copies.
+ACCRA_SHP  = Path(os.environ.get("AFRICA_ACCRA_SHP", "/path/to/Accra.shp"))
+CITY_BOUND = Path(os.environ.get(
+    "AFRICA_CITY_BOUNDARIES_SHP", "/path/to/city_boundaries.shp"
+))
 
 CRS = "EPSG:32630"   # UTM zone 30N — Ghana
+
+
+def _polygon_to_mpl_path(geom) -> MplPath:
+    """
+    Build a matplotlib Path with an explicit MOVETO at the start of every
+    ring (exterior + holes, and every part of a MultiPolygon).
+
+    A batched GeoDataFrame.plot() can lose the ring break when serialised
+    to SVG, leaving a LINETO where a MOVETO belongs — most renderers still
+    draw this correctly by luck, but Adobe Illustrator's SVG importer does
+    not: it draws a stray straight line connecting the end of one ring to
+    the start of the next. Building the Path explicitly avoids this.
+    """
+    polys = geom.geoms if geom.geom_type == "MultiPolygon" else [geom]
+    vertices, codes = [], []
+    for poly in polys:
+        for ring in [poly.exterior, *poly.interiors]:
+            coords = list(ring.coords)
+            vertices.extend(coords)
+            codes.append(MplPath.MOVETO)
+            codes.extend([MplPath.LINETO] * (len(coords) - 2))
+            codes.append(MplPath.CLOSEPOLY)
+    return MplPath(vertices, codes)
 
 # ── Colour scheme ──────────────────────────────────────────────────────────
 # Core (0–1): purple  |  Mid (2–5): mint→teal  |  Outer (6–9): pale→amber
@@ -76,7 +103,9 @@ BIN_COLORS = {
     9: "#784212",
 }
 ZONE_COL = {"Core": "#7D3C98", "Mid": "#1E8449", "Outer": "#D35400"}
-ZONE_BINS = {"Core": [0,1], "Mid": [2,3,4,5], "Outer": [6,7,8,9]}
+# Same 3-4-3 split as 08_statistical_models.py's ZONE_CORE/ZONE_MID/ZONE_OUTER
+# (predefined, not chosen post-hoc — see that module's docstring).
+ZONE_BINS = {"Core": [0,1,2], "Mid": [3,4,5,6], "Outer": [7,8,9]}
 
 # ── Load data ──────────────────────────────────────────────────────────────
 print("Loading data …")
@@ -95,7 +124,7 @@ tree = cKDTree(acc[["cx", "cy"]].values)
 dists, idxs = tree.query(acc_grid[["cx_m", "cy_m"]].values, k=1)
 matched = dists < 200
 
-acc_grid["radial_bin"]     = np.where(matched, acc.iloc[idxs]["radial_bin"].values,     np.nan)
+acc_grid["radial_bin"]     = np.where(matched, acc.iloc[idxs]["radial_bin_q"].values,    np.nan)
 acc_grid["dist_m_primary"] = np.where(matched, acc.iloc[idxs]["dist_m_primary"].values, np.nan)
 acc_grid["Pop2022"]        = np.where(matched, acc.iloc[idxs]["Pop2022"].values,         np.nan)
 acc_grid["radial_bin"]     = pd.to_numeric(acc_grid["radial_bin"], errors="coerce")
@@ -108,7 +137,7 @@ cy_c = float(acc.loc[acc["dist_m_primary"].idxmin(), "cy"])
 # ── Bin edge distances ─────────────────────────────────────────────────────
 bin_max_dist = {}   # metres
 for b in range(10):
-    sub = acc[acc["radial_bin"] == b]
+    sub = acc[acc["radial_bin_q"] == b]
     if len(sub):
         bin_max_dist[b] = float(sub["dist_m_primary"].max())
 
@@ -145,9 +174,12 @@ for b, arc in clipped_arcs.items():
         ax=ax, color="#444444", linewidth=0.55,
         linestyle=(0, (5, 4)), alpha=0.50, zorder=4)
 
-# 3 — city boundary
-boundary.plot(ax=ax, facecolor="none", edgecolor="#111111",
-              linewidth=1.4, zorder=5)
+# 3 — city boundary (per-row PathPatch, ring-safe — see _polygon_to_mpl_path)
+for _, row in boundary.iterrows():
+    ax.add_patch(PathPatch(
+        _polygon_to_mpl_path(row.geometry),
+        facecolor="none", edgecolor="#111111", linewidth=1.4, zorder=5,
+    ))
 
 # 4 — primary centre
 ax.plot(cx_c, cy_c, "*", color="white", markersize=11, zorder=9,
@@ -171,7 +203,7 @@ for zone, bins in ZONE_BINS.items():
     present = [b for b in bins if b in bins_present]
     if not present:
         continue
-    sub = acc[acc["radial_bin"].isin(present)]
+    sub = acc[acc["radial_bin_q"].isin(present)]
     lx = float(sub["cx"].mean())
     ly = float(sub["cy"].mean())
     ax.text(lx, ly, zone, fontsize=12, fontweight="bold",
@@ -246,7 +278,7 @@ ax.set_title("Accra — population-scaled radial bins",
 
 # ── Save ───────────────────────────────────────────────────────────────────
 plt.tight_layout(pad=0.2)
-for fmt, dpi in [("pdf", None), ("png", 300)]:
+for fmt, dpi in [("svg", None), ("png", 300)]:
     p = OUT_FIG / f"accra_rings.{fmt}"
     kw = {"dpi": dpi} if dpi else {}
     fig.savefig(p, bbox_inches="tight", **kw)

@@ -10,15 +10,20 @@ Pipeline overview
 3. Ward hierarchical agglomerative clustering (Euclidean distance) on centroids
 4. Cut dendrogram at k=2–30; expert-guided selection of optimal k
 """
+import os
 from pathlib import Path
 
 # ── Input: student embeddings and K-Means centroids ───────────────────────────
-# Per-city embedding files produced by the student distillation model.
-# Each file contains L2-normalised 256-dim vectors (norm ≡ 1.0).
-EMBEDDINGS_ROOT = Path(
-    '/home/sjs96_file_share/Momepy_workflow/Metrix'
-    '/data_cleaning_20260224/data_embeddings_20260513'
-)
+# Continent-scale embedding table (one row per GridID, L2-normalised
+# 256-dim vectors, norm ≡ 1.0), published by the companion
+# africa_morphology_embedding repository as a release asset:
+# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
+# (africa_embeddings.npz). Override with AFRICA_EMBEDDINGS_PATH if your
+# copy lives elsewhere.
+EMBEDDINGS_PATH = Path(os.environ.get(
+    'AFRICA_EMBEDDINGS_PATH',
+    '../../../africa_morphology_embedding/outputs/africa_embeddings.npz',
+))
 
 # 2,000 Mini-batch K-Means centroids derived from the full embedding set.
 # Used to make Ward clustering tractable at continental scale (~1 M cells).

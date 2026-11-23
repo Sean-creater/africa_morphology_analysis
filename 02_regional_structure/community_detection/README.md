@@ -18,6 +18,14 @@ spatial configuration, using the per-city type-interaction graphs from
    sensitivity to both parameters is reported alongside it.
 3. `03_visualize_communities.py` / `04_regional_maps.py` — continent-wide
    and regional close-up maps of community membership.
+4. `05_community_profiles.py` — per-community type composition and
+   type-adjacency heatmaps (the main-text community-profile figure).
+
+## Robustness checks
+
+- `check_knn_graph_row_order_invariance.py` — confirms the k-NN graph
+  construction in `02_leiden_communities.py` is invariant to the input
+  city table's row order. Run once; not part of the main pipeline.
 
 ## Data requirements
 
@@ -35,6 +43,7 @@ python 01_build_city_features.py
 python 02_leiden_communities.py
 python 03_visualize_communities.py
 python 04_regional_maps.py
+python 05_community_profiles.py
 ```
 
 ## Outputs

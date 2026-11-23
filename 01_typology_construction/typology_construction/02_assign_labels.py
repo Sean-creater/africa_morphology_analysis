@@ -24,15 +24,7 @@ from sklearn.metrics import pairwise_distances_argmin
 
 import sys
 sys.path.insert(0, str(Path(__file__).parent))
-from config import EMBEDDINGS_ROOT, CLUSTER_DIR, LOG_DIR, K_LIST
-
-# Reference file that carries the canonical city/country name strings.
-# These are used by all downstream scripts (subgraph_construction, etc.)
-# and must be full names (e.g. "Ghana", not "GHA").
-_REF_LABELS_CSV = Path(
-    '/home/sjs96_file_share/DL_workflow/K_Selection/'
-    'outputs/grid_cluster_labels_k02_k30.csv'
-)
+from config import EMBEDDINGS_PATH, CLUSTER_DIR, LOG_DIR, K_LIST
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 CLUSTER_DIR.mkdir(parents=True, exist_ok=True)
@@ -67,26 +59,18 @@ log(f'Centroids:      {centroids.shape}')
 log(f'\nCutting dendrogram at k={K_LIST[0]}–{K_LIST[-1]} …')
 cent_labels = {k: fcluster(Z, k, criterion='maxclust') - 1 for k in K_LIST}
 
-# ── Load per-city embeddings ───────────────────────────────────────────────────
-log(f'\nLoading embeddings from:\n  {EMBEDDINGS_ROOT}')
+# ── Load the continent-scale embedding table ───────────────────────────────────
+log(f'\nLoading embeddings from:\n  {EMBEDDINGS_PATH}')
 t0 = time.time()
-npz_paths = sorted(EMBEDDINGS_ROOT.rglob('*.npz'))
-log(f'  Found {len(npz_paths):,} city files')
-
-all_embs, all_gids = [], []
-for path in npz_paths:
-    d    = np.load(path, allow_pickle=True)
-    all_embs.append(d['embeddings'].astype(np.float32))
-    all_gids.extend(d['grid_ids'].astype(str).tolist())
-
-embeddings = np.vstack(all_embs)
-grid_ids   = np.array(all_gids)
+d = np.load(EMBEDDINGS_PATH, allow_pickle=True)
+embeddings = d['embeddings'].astype(np.float32)
+grid_ids   = d['grid_ids'].astype(str)
 N = len(grid_ids)
 log(f'  Loaded {N:,} cells in {time.time() - t0:.1f}s')
 
-# ── Load canonical city/country names from reference file ─────────────────────
-log(f'\nLoading city/country names from reference: {_REF_LABELS_CSV}')
-ref = pd.read_csv(_REF_LABELS_CSV, usecols=['grid_id', 'city', 'country'])
+# City/country names come from the same embedding table (one row per
+# GridID), so no separate reference file is needed.
+ref = pd.DataFrame({'grid_id': grid_ids, 'city': d['city'], 'country': d['country']})
 ref = ref.set_index('grid_id')
 
 norms = np.linalg.norm(embeddings, axis=1)
