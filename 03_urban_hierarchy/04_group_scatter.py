@@ -59,8 +59,8 @@ FIG_DIR.mkdir(parents=True, exist_ok=True)
 
 MM = 1 / 25.4
 
-# Same community palette as community_detection / 05_comm_scatter.py
-# (PALETTE_9, indexed by the original 0-based community ID).
+# Same community palette as community_detection's PALETTE_9, indexed by
+# the original 0-based community ID.
 COMM_COLORS = {
     0: "#f36424",
     1: "#672e92",

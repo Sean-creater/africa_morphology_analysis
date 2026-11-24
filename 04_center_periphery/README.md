@@ -19,7 +19,8 @@ core/  ──city centres + radial coordinates──►  extended/
 ```
 
 `extended/` also draws on `../03_urban_hierarchy/` (population-size tiers)
-and `../02_regional_structure/regression/` (climate/colonial/GDP context).
+and `../02_regional_structure/regression/`'s merged covariate table
+(climate/colonial/GDP context).
 
 ## Data requirements
 

@@ -16,10 +16,10 @@ spatial configuration, using the per-city type-interaction graphs from
    Distance matrices are cached; parameter sweeps over α and k reuse the
    cache. The main partition (α = 0.5, k = 100) is used throughout;
    sensitivity to both parameters is reported alongside it.
-3. `03_visualize_communities.py` / `04_regional_maps.py` — continent-wide
-   and regional close-up maps of community membership.
+3. `03_visualize_communities.py` — continent-wide map of community
+   membership (Fig. 2a).
 4. `05_community_profiles.py` — per-community type composition and
-   type-adjacency heatmaps (the main-text community-profile figure).
+   type-adjacency heatmaps (Fig. 2c,d).
 
 ## Robustness checks
 
@@ -33,8 +33,7 @@ spatial configuration, using the per-city type-interaction graphs from
   `../subgraph_construction/01_build_city_graphs.py`.
 - City coordinates (`../regression/input/city.xlsx`).
 - An Africa country boundary shapefile (`BOUNDARY` in
-  `03_visualize_communities.py` / `04_regional_maps.py`), for the map
-  figures only.
+  `03_visualize_communities.py`), for the map figure only.
 
 ## Usage
 
@@ -42,7 +41,6 @@ spatial configuration, using the per-city type-interaction graphs from
 python 01_build_city_features.py
 python 02_leiden_communities.py
 python 03_visualize_communities.py
-python 04_regional_maps.py
 python 05_community_profiles.py
 ```
 
@@ -54,5 +52,4 @@ python 05_community_profiles.py
   `../community_detection/outputs/city_communities.parquet`.
 - `outputs/sensitivity/city_communities_alpha{a}_k{k}.parquet` —
   partitions across the α × k sensitivity sweep.
-- `outputs/figures/community_map.*`, `regional_{west,north,east,south}.*`
-  — map figures.
+- `outputs/figures/community_map.*` — Fig. 2a.

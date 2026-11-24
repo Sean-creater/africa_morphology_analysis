@@ -29,8 +29,7 @@ full pool or from one community. Delta_V_c vs log(Pop_c) is then
 smoothed with a LOWESS trend (not a fixed window) for the headline
 curve and its zero-crossing P*.
 
-Core / outer zones (ABSOLUTE q, matches 08_statistical_models.py-style
-zones): core: q < 0.2, outer: 0.75 < q <= q_P95.
+Core / outer zones (ABSOLUTE q): core: q < 0.2, outer: 0.75 < q <= q_P95.
 
 SAMPLE COVERAGE (methods review, 2026-10-05): previously required
 >=MIN_CELLS_ZONE=20 cells in BOTH zones to qualify -- diagnosed as a

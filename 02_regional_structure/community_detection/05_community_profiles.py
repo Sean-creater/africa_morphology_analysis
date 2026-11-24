@@ -79,9 +79,9 @@ OUT_FIG.mkdir(parents=True, exist_ok=True)
 
 N_TYPES = 17
 
-# Community colour palette (must match 03_visualize_communities.py /
-# 05_comm_scatter.py) and geographic names, ranked by descending city count
-# (community id already equals rank order in this dataset: 0 is largest).
+# Community colour palette (must match 03_visualize_communities.py) and
+# geographic names, ranked by descending city count (community id already
+# equals rank order in this dataset: 0 is largest).
 PALETTE_9 = [
     "#f36424", "#672e92", "#8bcf02", "#139ed3",
     "#ff0000", "#ffd700", "#293890", "#74201e",

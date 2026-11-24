@@ -1,9 +1,8 @@
 # Regional Structure
 
 Builds a continent-level picture of how the k = 17 morphological types
-combine at the city scale, groups cities into communities of similar
-composition and spatial configuration, and relates that grouping to
-climate, socioeconomic, and colonial-history covariates.
+combine at the city scale, and groups cities into communities of similar
+composition and spatial configuration.
 
 ## Contents
 
@@ -11,8 +10,10 @@ climate, socioeconomic, and colonial-history covariates.
   graphs and compact type-interaction summaries.
 - [`community_detection/`](community_detection/) — Leiden communities of
   cities, from a similarity graph over the per-city summaries.
-- [`regression/`](regression/) — multinomial logit models relating
-  community membership to climate, GDP, population, and colonial history.
+- [`regression/`](regression/) — merges city- and country-level
+  covariates (coordinates, population, GDP, climate zone, colonial
+  history) with the community labels into the per-city covariate table
+  used by `../03_urban_hierarchy/` and `../04_center_periphery/core/`.
 
 ## Pipeline order
 

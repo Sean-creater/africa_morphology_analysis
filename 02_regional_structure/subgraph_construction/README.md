@@ -3,7 +3,7 @@
 For each city, builds a spatial graph of its grid cells and a compact
 17-node type-interaction graph summarising which morphological types are
 spatially adjacent and how often. These per-city graphs are the shared
-input to community detection and to the regional-structure regression.
+input to community detection.
 
 ## Method
 
@@ -14,8 +14,8 @@ input to community detection and to the regional-structure regression.
      that type, edge weight is the log-enrichment of observed vs. expected
      adjacency between two types (only types actually present in the city
      appear as nodes).
-2. `02_visualize_example.py` / `03_city_showcase.py` — illustrative
-   renderings of individual cities' graphs, for figures and inspection.
+2. `02_visualize_example.py` — illustrative rendering of an individual
+   city's graphs (Fig. 2b), for figures and inspection.
 
 ## Data requirements
 

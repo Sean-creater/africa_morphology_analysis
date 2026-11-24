@@ -11,9 +11,8 @@ Figure caption (to be used outside the figure):
     equal-width bins are defined on the pooled q distribution (common
     support up to q_P95) across all cities; bins 0-2 form the Core zone,
     3-6 the Mid zone, and 7-9 the Outer zone (same 3-4-3 split used
-    throughout 04_center_periphery/extended, e.g. 08_statistical_models.py's
-    ZONE_CORE/ZONE_MID/ZONE_OUTER). Dashed arcs show the bin-boundary
-    circles clipped to the city footprint.
+    throughout 04_center_periphery/extended). Dashed arcs show the
+    bin-boundary circles clipped to the city footprint.
 """
 
 import warnings
@@ -89,7 +88,6 @@ def _polygon_to_mpl_path(geom) -> MplPath:
 # ── Colour scheme ──────────────────────────────────────────────────────────
 # Core (0–1): purple  |  Mid (2–5): mint→teal  |  Outer (6–9): pale→amber
 # Within each zone: lighter for lower bins, darker for higher bins
-# Palette shared with 12_tier_rings_comparison.py
 BIN_COLORS = {
     0: "#C39BD3",
     1: "#7D3C98",
@@ -103,8 +101,8 @@ BIN_COLORS = {
     9: "#784212",
 }
 ZONE_COL = {"Core": "#7D3C98", "Mid": "#1E8449", "Outer": "#D35400"}
-# Same 3-4-3 split as 08_statistical_models.py's ZONE_CORE/ZONE_MID/ZONE_OUTER
-# (predefined, not chosen post-hoc — see that module's docstring).
+# Same 3-4-3 split used throughout 04_center_periphery/extended
+# (predefined, not chosen post-hoc).
 ZONE_BINS = {"Core": [0,1,2], "Mid": [3,4,5,6], "Outer": [7,8,9]}
 
 # ── Load data ──────────────────────────────────────────────────────────────

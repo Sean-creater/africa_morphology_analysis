@@ -18,14 +18,15 @@ geographic community or country.
      from grid geometry;
    - `log_pop`, `community`, and `country`, joined from
      `../02_regional_structure/`.
-2. `02_plot_hierarchy.py` — the main continent-wide figure: all four group
-   shares vs. log(population), LOESS smooth with bootstrap CI.
+2. `02_plot_hierarchy.py` — the continent-wide trend panel (Fig. 3a, top):
+   all four group shares vs. log(population), LOESS smooth with
+   bootstrap CI.
 3. `03_country_slopes.py` — country-specific OLS slopes for the same
    outcomes, to check how consistent the continental pattern is across
    countries.
-4. `04_group_scatter.py` / `05_comm_scatter.py` — the same relationships
-   disaggregated by community, to check how consistent the pattern is
-   across the communities identified in
+4. `04_group_scatter.py` — the same relationships disaggregated by
+   community (Fig. 3a's lower panels), to check how consistent the
+   pattern is across the communities identified in
    `../02_regional_structure/community_detection/`.
 5. `06_scaling_regression.py` — standardised OLS scaling regressions for
    `H17_star` and `r17` against log(population), with and without
@@ -59,7 +60,6 @@ python 01_compute_city_metrics.py
 python 02_plot_hierarchy.py
 python 03_country_slopes.py
 python 04_group_scatter.py
-python 05_comm_scatter.py
 python 06_scaling_regression.py
 python 07_size_gradient.py
 python 08_robustness.py

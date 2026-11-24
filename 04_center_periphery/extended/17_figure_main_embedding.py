@@ -82,8 +82,7 @@ OUT_FIG.mkdir(parents=True, exist_ok=True)
 
 # Pre-rendered illustration (Accra example city), produced by
 # 11_accra_rings_viz.py using the q = d/R98 radial definition and the
-# 3-4-3 Core/Mid/Outer zone split (ZONE_CORE/MID/OUTER in
-# 08_statistical_models.py).
+# 3-4-3 Core/Mid/Outer zone split.
 ACCRA_PNG = OUT_FIG / "accra_rings.png"
 
 EMB_COLOR = "#293890"
