@@ -10,8 +10,11 @@ vary across the embedding space.
    on all ~1M embeddings, coloured by k = 17 cluster label (Fig. 1a).
 2. `02_feature_overlay.py` — the same t-SNE coordinates, coloured by the
    top-12 morphometric features (ranked by η² in
-   `../cluster_interpretation/`) instead of cluster label (Supplementary
-   Fig. S1).
+   `../cluster_interpretation/`) instead of cluster label, as two 2x3
+   figures.
+3. `03_feature_overlay_combined.py` — the same top-12 feature overlays as
+   `02_feature_overlay.py`, combined into the single 4x3 figure published
+   as Supplementary Fig. S1.
 
 Embeddings are L2-normalised before projection (cosine metric).
 Degenerate embeddings (L2 norm outside the IQR-based range) and projection
@@ -26,12 +29,18 @@ script's docstring for the exact thresholds.
   repository.
 - `model_input_k17.csv` (`MODEL_INPUT_CSV` in `config.py`), produced by
   `../cluster_interpretation/01_merge_data.py`.
+- `../cluster_interpretation/outputs/tables/feature_importance.csv`,
+  produced by `../cluster_interpretation/03_feature_importance.py`.
+- `../cluster_interpretation/reference/column_name_mapping.csv`
+  (bundled) — short-code to full-name mapping, used by
+  `03_feature_overlay_combined.py` for panel titles.
 
 ## Usage
 
 ```bash
 python 01_tsne.py
-python 02_feature_overlay.py   # requires 01_tsne.py to have run first
+python 02_feature_overlay.py            # requires 01_tsne.py to have run first
+python 03_feature_overlay_combined.py   # requires 01_tsne.py to have run first
 ```
 
 ## Outputs
@@ -40,4 +49,6 @@ python 02_feature_overlay.py   # requires 01_tsne.py to have run first
   script skips recomputation if its cache exists).
 - `outputs/figures/tsne_k17.*` — cluster-coloured scatter plot (Fig. 1a).
 - `outputs/figures/tsne_feature_overlay_1.*` / `_2.*` — feature-coloured
-  scatter plots, top-12 features by η² (Supplementary Fig. S1).
+  scatter plots, top-12 features by η² (two 2x3 figures).
+- `outputs/figures/tsne_feature_overlay_combined.*` — the same top-12
+  feature overlays as one 4x3 figure (Supplementary Fig. S1).

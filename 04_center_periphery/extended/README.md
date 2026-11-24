@@ -48,6 +48,9 @@ extended/14_coverage_vs_morphology.py       (built-up coverage vs. morphology: o
 extended/17_figure_main_embedding.py        (main 4-panel figure; panel b sources from 14 above)
 extended/11_accra_rings_viz.py              (illustrative single-city ring visualisation,
                                               embedded as 17's panel a)
+extended/34_fig_s10_sensitivity.py          (Supplementary Fig. S10: sensitivity of the Fig. 4c/4d
+                                              findings to alternative center definitions,
+                                              neighborhood sizes, and core-periphery boundaries)
 ```
 
 **Caveats:**
@@ -137,6 +140,7 @@ python 30_tier_radial_composition_divergence.py
 python 33_tier_coverage_divergence.py
 python 11_accra_rings_viz.py
 python 17_figure_main_embedding.py
+python 34_fig_s10_sensitivity.py
 ```
 
 ## Outputs
@@ -148,3 +152,5 @@ python 17_figure_main_embedding.py
   from `13`, the shared input to `14`–`33`.
 - `outputs/figures/figure_main_embedding.*` — the main 4-panel figure
   (`17_figure_main_embedding.py`).
+- `outputs/figures/fig_s10_sensitivity.*` — Supplementary Fig. S10
+  (`34_fig_s10_sensitivity.py`).

@@ -18,7 +18,10 @@ each cluster deviates from the continent-wide average on those features.
 4. `04_cluster_profiles.py` — for each cluster and feature, the signed
    standardised mean deviation from the continent-wide average
    (D_cj), giving each cluster's morphological profile relative to the
-   full dataset.
+   full dataset (Fig. 1b).
+5. `05_cluster_exemplars.py` — for each cluster, the grid cells closest
+   to its centroid in embedding space, with their pre-rendered composite
+   images (Fig. 1c).
 
 η² is reported as a descriptive variance-decomposition ratio; no p-values
 are computed, consistent with the descriptive framework used throughout
@@ -33,6 +36,16 @@ Methods and Supplementary Information for the full statistical treatment.
   repository.
 - `grid_type_labels.csv`, produced by
   `../typology_construction/02_assign_labels.py`.
+- `reference/column_name_mapping.csv` (bundled) — short-code to
+  full-name mapping for the 164 urban form metrics (Supplementary
+  Table S1's data source), used by `04_cluster_profiles.py` for the
+  heatmap's feature-name labels.
+- `../embedding_visualization/outputs/tsne_coords.parquet` (for
+  `05_cluster_exemplars.py`), produced by
+  `../embedding_visualization/01_tsne.py`.
+- Pre-rendered composite images from the k-selection pipeline (for
+  `05_cluster_exemplars.py`; not bundled, several GB — see its
+  docstring and `AFRICA_KSELECTION_IMAGE_DIRS`).
 
 ## Usage
 
@@ -41,6 +54,7 @@ python 01_merge_data.py
 python 02_deduplicate_features.py
 python 03_feature_importance.py
 python 04_cluster_profiles.py
+python 05_cluster_exemplars.py
 ```
 
 ## Outputs
@@ -53,3 +67,6 @@ python 04_cluster_profiles.py
   by η².
 - `outputs/tables/cluster_profiles.csv` / `cluster_sizes.csv` — per-cluster
   morphological profile (D_cj matrix) and grid-cell counts.
+- `outputs/figures/cluster_profiles_heatmap.svg` — Fig. 1b.
+- `outputs/tables/cluster_exemplars.csv` / `outputs/exemplar_images/` —
+  Fig. 1c's representative grid cells and their composite images.
