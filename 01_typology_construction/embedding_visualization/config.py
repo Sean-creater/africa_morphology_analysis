@@ -48,8 +48,5 @@ MODEL_INPUT = (
 # Intermediate: full-dataset t-SNE coordinates (GridID, tsne1, tsne2, label_k17, …)
 TSNE_PARQUET = ROOT / "outputs" / "tsne_coords.parquet"
 
-# Intermediate: full-dataset UMAP coordinates (GridID, umap1, umap2, label_k17, …)
-UMAP_PARQUET = ROOT / "outputs" / "umap_coords.parquet"
-
 # Figures
 OUT_FIG_DIR = ROOT / "outputs" / "figures"

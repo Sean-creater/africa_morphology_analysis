@@ -6,9 +6,8 @@ across cities of different size.
 
 ## Contents
 
-- [`core/`](core/) — city centre definitions, radial distance in three
-  frameworks, and the core-periphery contrast in morphological
-  composition and network structure.
+- [`core/`](core/) — city centre definitions and the population-scaled
+  radial coordinate, the shared input to `extended/`.
 - [`extended/`](extended/) — the radial transition stratified by city-size
   tier, connecting it to regional context and testing its robustness.
 

@@ -31,16 +31,13 @@ of this script after a methods review caught four issues, all fixed here:
       percentile CIs. C7 (n=64 cities, R^2=0.77) and C4 (tau=0.50, not
       clearly within the observed q range) get the same bootstrap
       treatment so their wider uncertainty is visible rather than
-      implied by a single understated se. REVISED (methods review round
-      2): originally resampled CITIES independently within each
-      community, ignoring within-country correlation and understating
-      continental uncertainty -- same issue already fixed in
-      20_trajectory_by_africapolis_tier.py, 23_scale_dependent_
-      convergence.py, and 27_within_city_heterogeneity.py. Replaced with
-      a COUNTRY-block bootstrap: resample countries (within the
-      community) with replacement, each resampled country contributing
-      its full set of qualifying cities (preserving resampling
-      multiplicity). This also makes the pooled (community==-1) curve's
+      implied by a single understated se. A per-city bootstrap would
+      ignore within-country correlation and understate continental
+      uncertainty, so this uses a COUNTRY-block bootstrap instead:
+      resample countries (within the community) with replacement, each
+      resampled country contributing its full set of qualifying cities
+      (preserving resampling multiplicity). This also makes the pooled
+      (community==-1) curve's
       CI -- reused as the grey reference band in both
       25_trajectory_by_tier_combined.py and this script's own
       composition figure -- consistent with 20's tier-level CIs, which

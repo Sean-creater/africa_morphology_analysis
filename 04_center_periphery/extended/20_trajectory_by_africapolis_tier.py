@@ -33,15 +33,13 @@ REVISED (methods review, same three issues already fixed in
       sqrt(diag(pcov)) from curve_fit on 20 correlated radial-bin means.
       Replaced with a bootstrap (recompute D(q)/composition and refit
       D_max/tau each draw) for both the trajectory and the composition
-      profile. REVISED (methods review round 2): the bootstrap originally
-      resampled CITIES independently within each tier, which ignores
-      within-country correlation (cities in the same country share
-      data-collection pipeline, administrative boundary conventions, and
-      regional morphology) and understates the true continental
-      uncertainty -- the same issue already fixed in
-      23_scale_dependent_convergence.py and 27_within_city_heterogeneity.py.
-      Replaced with a COUNTRY-block bootstrap: resample countries (within
-      the tier) with replacement, each resampled country contributing its
+      profile. A per-city bootstrap would ignore within-country
+      correlation (cities in the same country share data-collection
+      pipeline, administrative boundary conventions, and regional
+      morphology) and understate the true continental uncertainty, so
+      this uses a COUNTRY-block bootstrap instead: resample countries
+      (within the tier) with replacement, each resampled country
+      contributing its
       full set of qualifying cities (preserving resampling multiplicity).
 
   (4) FITTING-ORIGIN INCONSISTENCY (fixed): bin 0's D_q=0 is now an

@@ -61,12 +61,10 @@ extended/33_tier_coverage_divergence.py (within-tier, not tier-vs-tier: for each
                                               small cities' cores and not any tier's periphery.
                                               No population density/Pop2022 used.)
 extended/21_trajectory_by_community.py (single-panel combined figure, self-contained)
-extended/23_scale_dependent_convergence.py  (A: between-city, reversal P*~126k)
-extended/29_core_outer_divergence_mechanism.py (mechanism decomposition of A --
+extended/23_scale_dependent_convergence.py  (between-city divergence, reversal P*~126k)
+extended/29_core_outer_divergence_mechanism.py (mechanism decomposition --
                                               core vs periphery levels separately;
                                               reuses 23's dispersion table, no new metric)
-extended/27_within_city_heterogeneity.py    (B: within-city)
-extended/28_spatial_coherence.py            (C: spatial coherence -- EXPLORATORY, see its docstring)
 extended/14_coverage_vs_morphology.py       (built-up coverage vs. morphology: out-of-sample R^2 and
                                               density-ratio result, see caveat below)
 extended/17_figure_main_embedding.py        (main 4-panel figure; panel b sources from 14 above)
@@ -156,8 +154,6 @@ python 20_trajectory_by_africapolis_tier.py
 python 21_trajectory_by_community.py
 python 23_scale_dependent_convergence.py
 python 25_trajectory_by_tier_combined.py
-python 27_within_city_heterogeneity.py
-python 28_spatial_coherence.py
 python 29_core_outer_divergence_mechanism.py
 python 30_tier_radial_composition_divergence.py
 python 32_coverage_adjusted_divergence.py

@@ -18,7 +18,6 @@ dependencies:
   - pyarrow
   - openpyxl
   - opentsne
-  - umap-learn
   - pillow
   - rasterio
   - pip

@@ -1,9 +1,8 @@
 # Center-Periphery (Core)
 
 Computes each city's population-driven centre and the radial position of
-every grid cell relative to it, in three parallel distance frameworks, and
-tests whether morphological composition and network structure differ
-systematically between centre and periphery.
+every grid cell relative to it, the shared data-preparation input to
+`../extended/`.
 
 ## Method
 
@@ -21,18 +20,8 @@ Run order follows the dependency chain, not the file-number prefix —
    definition.
 3. `00_allometric_scaling.py` — R98 (98th-percentile radial distance from
    each city's population centre) vs. population, giving the scaling
-   exponents used to build the population-scaled distance framework
-   (distance / population^α) that `03_ring_profiles.py` onward also use.
-4. `03_ring_profiles.py` — aggregates cell-level radial data to city ×
-   ring level, across all three distance frameworks.
-5. `04_radial_network_metrics.py` — radial spatial assortativity per city
-   × ring, using an edge-midpoint assignment strategy.
-6. `05_city_differentiation.py` — city-level centre-periphery contrast
-   metrics (CPC) from the ring profiles.
-7. `06_radial_models.py` — the statistical models and figures: CPC scaling
-   against population, and the radial gradient of morphological diversity
-   and assortativity across rings, each across all three distance
-   frameworks.
+   exponents used by `../extended/13_embedding_radial_join.py`'s
+   population-scaled radial coordinate q = d/R98.
 
 ## Data requirements
 
@@ -57,10 +46,6 @@ Run order follows the dependency chain, not the file-number prefix —
 python 01_define_centres.py
 python 02_cell_radial_position.py
 python 00_allometric_scaling.py
-python 03_ring_profiles.py
-python 04_radial_network_metrics.py
-python 05_city_differentiation.py
-python 06_radial_models.py
 ```
 
 ## Outputs
@@ -70,5 +55,3 @@ python 06_radial_models.py
 - `outputs/tables/cell_radial_position.parquet` / `city_R98.parquet` /
   `allometric_params.json` — the shared radial-coordinate inputs to
   `../extended/`.
-- `outputs/tables/city_radial_metrics.csv` — city-level CPC metrics.
-- `outputs/figures/` — the CPC scaling and radial gradient figures.
