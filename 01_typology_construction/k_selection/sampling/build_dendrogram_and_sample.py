@@ -35,9 +35,8 @@ from sklearn.preprocessing import normalize
 ROOT = Path(__file__).resolve().parents[1]
 
 # Continent-scale embedding table (one row per GridID). Not produced by
-# any script in this or the companion repo -- download it manually from
-# the africa_morphology_embedding release:
-# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
+# any script in this or the companion repo -- download it from the
+# companion repository's release assets.
 # Set AFRICA_EMBEDDINGS_PATH to wherever you place the downloaded file.
 EMBEDDINGS_PATH = Path(os.environ.get(
     "AFRICA_EMBEDDINGS_PATH",

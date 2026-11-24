@@ -15,7 +15,7 @@ candidate k = 2–30.
 2. `imagery/` — renders each sampled cell into the same satellite +
    building/road overlay composite used throughout this project (via the
    companion
-   [`africa_morphology_imagery`](https://github.com/Sean-creater/africa_morphology_imagery)
+   `africa_morphology_imagery`
    package), and exports/downloads the underlying satellite tiles through
    Google Earth Engine.
 3. `within_cluster/` — a second sampling pass drawing within-cluster pairs
@@ -40,14 +40,14 @@ the full selection procedure.
 ## Data requirements
 
 - Continent-scale student embeddings, produced by the companion
-  [`africa_morphology_embedding`](https://github.com/Sean-creater/africa_morphology_embedding)
+  `africa_morphology_embedding`
   repository.
 - Vector building/road layers and grid geometries, produced by the
   companion
-  [`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)
+  `africa_morphology_metrics`
   repository.
 - A checked-out copy of
-  [`africa_morphology_imagery`](https://github.com/Sean-creater/africa_morphology_imagery)
+  `africa_morphology_imagery`
   for image rendering (`AFRICA_MORPHOLOGY_IMAGERY` in `imagery/generate_images.py`
   and `imagery/download_from_drive.py`).
 - A Google Earth Engine project for satellite tile access.

@@ -24,7 +24,6 @@ subgraph_construction/  ──type graphs──►  community_detection/  ──
 ## Data requirements
 
 Per-city cleaned SHP grid geometries and `grid_type_labels.csv`, produced
-by the companion
-[`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)
+by the companion `africa_morphology_metrics` repository
 and `../01_typology_construction/` respectively. See each submodule's
 README for the specific paths to set.

@@ -47,7 +47,7 @@ Some steps additionally require:
 - A Google Earth Engine project, for the satellite-imagery rendering in
   `01_typology_construction/k_selection/`.
 - A checked-out copy of the companion
-  [`africa_morphology_imagery`](https://github.com/Sean-creater/africa_morphology_imagery)
+  `africa_morphology_imagery`
   repository, for the same rendering step.
 
 ## Data requirements
@@ -56,8 +56,8 @@ None of the following are bundled in this repository:
 
 | Source | Used for |
 |--------|----------|
-| Continent-scale embedding table (`africa_embeddings.npz`, one row per GridID) — a manually-downloaded [`africa_morphology_embedding` release asset](https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1), not produced by any script in that repository | Input to `01_typology_construction/` |
-| Per-city cleaned morphology CSVs and SHP grid geometries ([`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)) | Input throughout |
+| Continent-scale embedding table (`africa_embeddings.npz`, one row per GridID) — download it from the companion repository's release assets, not produced by any script in that repository | Input to `01_typology_construction/` |
+| Per-city cleaned morphology CSVs and SHP grid geometries (`africa_morphology_metrics`) | Input throughout |
 | Africa country boundary shapefile | Map figures in `02_regional_structure/community_detection/` |
 
 By default, scripts look for the companion repositories as sibling

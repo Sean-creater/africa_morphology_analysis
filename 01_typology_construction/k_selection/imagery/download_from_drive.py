@@ -36,9 +36,9 @@ TIFF_CACHE = ROOT / "outputs" / "tiff_cache"   # downloaded GeoTIFFs
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 TIFF_CACHE.mkdir(parents=True, exist_ok=True)
 
-# Checked-out copy of the companion africa_morphology_imagery repository
-# (https://github.com/Sean-creater/africa_morphology_imagery). Override
-# with AFRICA_MORPHOLOGY_IMAGERY_ROOT if your copy lives elsewhere.
+# Checked-out copy of the companion africa_morphology_imagery repository.
+# Override with AFRICA_MORPHOLOGY_IMAGERY_ROOT if your copy lives
+# elsewhere.
 AFRICA_MORPHOLOGY_IMAGERY = Path(os.environ.get(
     "AFRICA_MORPHOLOGY_IMAGERY_ROOT",
     "../../../../africa_morphology_imagery/africa_morphology_imagery",

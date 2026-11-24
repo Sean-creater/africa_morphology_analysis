@@ -32,7 +32,7 @@ Methods and Supplementary Information for the full statistical treatment.
 
 - Per-city cleaned morphology CSVs (`CLEANED_DIR` in `01_merge_data.py`),
   produced by the companion
-  [`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)
+  `africa_morphology_metrics`
   repository.
 - `grid_type_labels.csv`, produced by
   `../typology_construction/02_assign_labels.py`.

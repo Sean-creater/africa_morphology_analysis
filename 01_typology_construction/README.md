@@ -35,8 +35,6 @@ if reproducing from scratch.
 ## Data requirements
 
 Continent-scale student embeddings, produced by the companion
-[`africa_morphology_embedding`](https://github.com/Sean-creater/africa_morphology_embedding)
-repository, and per-city morphometric indicator CSVs, produced by the
-companion
-[`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)
+`africa_morphology_embedding` repository, and per-city morphometric
+indicator CSVs, produced by the companion `africa_morphology_metrics`
 repository. See each submodule's README for the specific paths to set.

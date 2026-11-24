@@ -21,7 +21,7 @@ input to community detection.
 
 - Per-city cleaned SHP grid geometries (`SHP_ROOT`), produced by the
   companion
-  [`africa_morphology_metrics`](https://github.com/Sean-creater/africa_morphology_metrics)
+  `africa_morphology_metrics`
   repository.
 - `grid_type_labels.csv` (`LABELS_PATH`), produced by
   `../../01_typology_construction/typology_construction/02_assign_labels.py`.

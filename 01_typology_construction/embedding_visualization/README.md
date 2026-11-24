@@ -25,7 +25,7 @@ script's docstring for the exact thresholds.
 
 - Continent-scale student embeddings (`EMBEDDINGS_PATH` in `config.py`),
   a manually-downloaded release asset of the companion
-  [`africa_morphology_embedding`](https://github.com/Sean-creater/africa_morphology_embedding)
+  `africa_morphology_embedding`
   repository.
 - `model_input_k17.csv` (`MODEL_INPUT_CSV` in `config.py`), produced by
   `../cluster_interpretation/01_merge_data.py`.

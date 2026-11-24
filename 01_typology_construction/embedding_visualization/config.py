@@ -20,9 +20,8 @@ ROOT = Path(__file__).resolve().parent
 # ---------------------------------------------------------------------------
 
 # Continent-scale embedding table (one row per GridID). Not produced by
-# any script in this or the companion repo -- download it manually from
-# the africa_morphology_embedding release:
-# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
+# any script in this or the companion repo -- download it from the
+# companion repository's release assets.
 # Must contain:
 #   embeddings : float32 array of shape (N, 256)
 #   grid_ids   : str array of shape (N,)

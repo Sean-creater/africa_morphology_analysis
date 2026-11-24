@@ -69,8 +69,7 @@ MERGED_K17   = (ROOT.parent.parent / "01_typology_construction" / "cluster_inter
 
 # Continent-scale embedding table (africa_embeddings.npz, one row per
 # GridID). Not produced by any script in this or the companion repo --
-# download it manually from the africa_morphology_embedding release:
-# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
+# download it from the companion repository's release assets.
 # Set AFRICA_EMBEDDINGS_PATH to wherever you place the downloaded file.
 EMBEDDINGS_PATH = Path(os.environ.get(
     "AFRICA_EMBEDDINGS_PATH",

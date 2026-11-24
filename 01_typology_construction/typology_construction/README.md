@@ -29,7 +29,7 @@ Supplementary Information for the full selection procedure.
 
 - Continent-scale student embeddings (`EMBEDDINGS_ROOT` in `config.py`),
   produced by the companion
-  [`africa_morphology_embedding`](https://github.com/Sean-creater/africa_morphology_embedding)
+  `africa_morphology_embedding`
   repository.
 - K-Means centroids (`CENTROIDS_NPY` in `config.py`), produced by
   `../k_selection/sampling/build_dendrogram_and_sample.py`.
