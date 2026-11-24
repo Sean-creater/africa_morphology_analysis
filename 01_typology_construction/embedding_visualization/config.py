@@ -19,16 +19,18 @@ ROOT = Path(__file__).resolve().parent
 # INPUT PATHS  — edit these to match your data location
 # ---------------------------------------------------------------------------
 
-# Continent-scale embedding table (one row per GridID), published by the
-# companion africa_morphology_embedding repository as a release asset.
+# Continent-scale embedding table (one row per GridID). Not produced by
+# any script in this or the companion repo -- download it manually from
+# the africa_morphology_embedding release:
+# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
 # Must contain:
 #   embeddings : float32 array of shape (N, 256)
 #   grid_ids   : str array of shape (N,)
 #   city, country : str arrays of shape (N,)
-# Override with AFRICA_EMBEDDINGS_PATH if your copy lives elsewhere.
+# Set AFRICA_EMBEDDINGS_PATH to wherever you place the downloaded file.
 EMBEDDINGS_PATH = Path(os.environ.get(
     "AFRICA_EMBEDDINGS_PATH",
-    "../../../africa_morphology_embedding/outputs/africa_embeddings.npz",
+    "/path/to/africa_embeddings.npz",
 ))
 
 # Parquet table with cluster labels and morphometric features, produced by

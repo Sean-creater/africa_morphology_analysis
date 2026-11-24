@@ -15,14 +15,15 @@ from pathlib import Path
 
 # ── Input: student embeddings and K-Means centroids ───────────────────────────
 # Continent-scale embedding table (one row per GridID, L2-normalised
-# 256-dim vectors, norm ≡ 1.0), published by the companion
-# africa_morphology_embedding repository as a release asset:
+# 256-dim vectors, norm ≡ 1.0). Not produced by any script in this or the
+# companion repo -- download it manually from the
+# africa_morphology_embedding release:
 # https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
-# (africa_embeddings.npz). Override with AFRICA_EMBEDDINGS_PATH if your
-# copy lives elsewhere.
+# (africa_embeddings.npz). Set AFRICA_EMBEDDINGS_PATH to wherever you
+# place the downloaded file.
 EMBEDDINGS_PATH = Path(os.environ.get(
     'AFRICA_EMBEDDINGS_PATH',
-    '../../../africa_morphology_embedding/outputs/africa_embeddings.npz',
+    '/path/to/africa_embeddings.npz',
 ))
 
 # 2,000 Mini-batch K-Means centroids derived from the full embedding set.

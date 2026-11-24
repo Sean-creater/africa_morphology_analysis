@@ -34,12 +34,14 @@ from sklearn.preprocessing import normalize
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[1]
 
-# Continent-scale embedding table (one row per GridID), published by the
-# companion africa_morphology_embedding repository as a release asset.
-# Override with AFRICA_EMBEDDINGS_PATH if your copy lives elsewhere.
+# Continent-scale embedding table (one row per GridID). Not produced by
+# any script in this or the companion repo -- download it manually from
+# the africa_morphology_embedding release:
+# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
+# Set AFRICA_EMBEDDINGS_PATH to wherever you place the downloaded file.
 EMBEDDINGS_PATH = Path(os.environ.get(
     "AFRICA_EMBEDDINGS_PATH",
-    "../../../africa_morphology_embedding/outputs/africa_embeddings.npz",
+    "/path/to/africa_embeddings.npz",
 ))
 
 OUT_DENDRO_DIR = ROOT / "outputs" / "dendrogram"

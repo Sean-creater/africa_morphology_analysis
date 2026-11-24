@@ -67,13 +67,14 @@ TIERS_PQ     = OUT_TABLES / "city_tiers.parquet"
 MERGED_K17   = (ROOT.parent.parent / "01_typology_construction" / "cluster_interpretation"
                / "outputs" / "tables" / "merged_k17.parquet")
 
-# Continent-scale embedding table (companion repo release asset: see
-# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1,
-# africa_embeddings.npz, one row per GridID). Override with
-# AFRICA_EMBEDDINGS_PATH if your copy lives elsewhere.
+# Continent-scale embedding table (africa_embeddings.npz, one row per
+# GridID). Not produced by any script in this or the companion repo --
+# download it manually from the africa_morphology_embedding release:
+# https://github.com/Sean-creater/africa_morphology_embedding/releases/tag/africa-full-outputs-v1
+# Set AFRICA_EMBEDDINGS_PATH to wherever you place the downloaded file.
 EMBEDDINGS_PATH = Path(os.environ.get(
     "AFRICA_EMBEDDINGS_PATH",
-    "../../../africa_morphology_embedding/outputs/africa_embeddings.npz",
+    "/path/to/africa_embeddings.npz",
 ))
 
 EMB_DIM = 256
