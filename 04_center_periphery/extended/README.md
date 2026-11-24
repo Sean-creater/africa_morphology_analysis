@@ -21,33 +21,11 @@ extended/30_tier_radial_composition_divergence.py (composition explanation for t
                                               directly, no new metric. Imports
                                               20_trajectory_by_africapolis_tier.py by path for
                                               its aggregation functions.)
-extended/32_coverage_adjusted_divergence.py (methods follow-up to 30: isolates how much of the
-                                              Small-vs-Large core-periphery composition
-                                              divergence survives once built-up coverage
-                                              (LCF_Built) is held fixed within 3 global
-                                              terciles, vs the raw (coverage-pooled) curve --
-                                              answers "do differently-sized cities organise the
-                                              SAME coverage level differently, or does the raw
-                                              core-vs-periphery gap just reflect cores/
-                                              peripheries having different coverage". Finding:
-                                              the raw core-to-periphery decline (0.56->0.31)
-                                              largely disappears once coverage is held fixed
-                                              (~0.33-0.38 throughout) -- most of 30's raw
-                                              divergence pattern reflects coverage, not
-                                              tier-specific organisation of the same coverage.
-                                              No population density/Pop2022 used (population
-                                              only defines radial position, as throughout this
-                                              project) -- LCF_Built is remote-sensing coverage,
-                                              not a population estimate, so this carries none
-                                              of the WorldPop-circularity risk flagged on
-                                              script 14.)
-extended/33_tier_coverage_divergence.py (within-tier, not tier-vs-tier: for each Africapolis
-                                              size tier SEPARATELY, full pairwise cross-city
-                                              embedding divergence (V_between) at each city's
-                                              own built-up coverage level -- "at X% coverage, how
-                                              unpredictable are same-tier cities from each
-                                              other", not "how different do the tiers look from
-                                              each other" (that's 32's question). Two figures,
+extended/33_tier_coverage_divergence.py (for each Africapolis size tier SEPARATELY, full
+                                              pairwise cross-city embedding divergence
+                                              (V_between) at each city's own built-up coverage
+                                              level -- "at X% coverage, how unpredictable are
+                                              same-tier cities from each other". Two figures,
                                               core and periphery, reusing 23's qualifying
                                               636-city sample and core/outer embeddings. Finding:
                                               at the CORE, Intermediate and Large tiers converge
@@ -156,7 +134,6 @@ python 23_scale_dependent_convergence.py
 python 25_trajectory_by_tier_combined.py
 python 29_core_outer_divergence_mechanism.py
 python 30_tier_radial_composition_divergence.py
-python 32_coverage_adjusted_divergence.py
 python 33_tier_coverage_divergence.py
 python 11_accra_rings_viz.py
 python 17_figure_main_embedding.py
